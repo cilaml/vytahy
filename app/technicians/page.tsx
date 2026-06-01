@@ -109,6 +109,8 @@ export default function TechniciansPage() {
   const [message, setMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
+  const isAdmin = currentProfile?.role === "admin";
+
   const isAdminOrLead =
     currentProfile?.role === "admin" ||
     currentProfile?.role === "vedouci_technik";
@@ -267,7 +269,10 @@ export default function TechniciansPage() {
     setSuccessMessage("");
     setEditingProfile(null);
     setEditingSecondaryRegionIds([]);
-    setNewUserForm(emptyNewUserForm);
+    setNewUserForm({
+      ...emptyNewUserForm,
+      role: isAdmin ? emptyNewUserForm.role : "technik",
+    });
     setNewUserSecondaryRegionIds([]);
     setShowCreateForm(true);
 
@@ -308,6 +313,7 @@ export default function TechniciansPage() {
     const password = newUserForm.password.trim();
     const fullName = newUserForm.full_name.trim();
     const phone = newUserForm.phone.trim();
+    const roleToCreate: ProfileRole = isAdmin ? newUserForm.role : "technik";
 
     if (!email) {
       setMessage("Vyplň e-mail nového uživatele.");
@@ -356,7 +362,7 @@ export default function TechniciansPage() {
         password,
         full_name: fullName,
         phone: phone || null,
-        role: newUserForm.role,
+        role: roleToCreate,
         primary_region_id: newUserForm.primary_region_id || null,
         can_do_inspections: newUserForm.can_do_inspections,
         active: newUserForm.active,
@@ -384,10 +390,7 @@ export default function TechniciansPage() {
 
     if (!response.ok) {
       setSuccessMessage("");
-      setMessage(
-        result.error ||
-          `Nepodařilo se vytvořit uživatele. HTTP status: ${response.status}`
-      );
+      setMessage(result.error || "Nepodařilo se vytvořit uživatele.");
       return;
     }
 
@@ -447,17 +450,19 @@ export default function TechniciansPage() {
 
     const supabase = createClient();
 
+    const profileUpdatePayload = {
+      full_name: fullName,
+      phone: editingProfile.phone?.trim() || null,
+      ...(isAdmin ? { role: editingProfile.role } : {}),
+      primary_region_id: editingProfile.primary_region_id || null,
+      can_do_inspections: editingProfile.can_do_inspections,
+      active: editingProfile.active,
+      updated_at: new Date().toISOString(),
+    };
+
     const { error: profileUpdateError } = await supabase
       .from("profiles")
-      .update({
-        full_name: fullName,
-        phone: editingProfile.phone?.trim() || null,
-        role: editingProfile.role,
-        primary_region_id: editingProfile.primary_region_id || null,
-        can_do_inspections: editingProfile.can_do_inspections,
-        active: editingProfile.active,
-        updated_at: new Date().toISOString(),
-      })
+      .update(profileUpdatePayload)
       .eq("id", editingProfile.id);
 
     if (profileUpdateError) {
@@ -743,6 +748,7 @@ export default function TechniciansPage() {
                 <h2 style={styles.cardTitle}>Přidat uživatele</h2>
                 <p style={styles.cardDescription}>
                   Vytvoří se účet v Supabase Auth a zároveň profil v aplikaci.
+                  {!isAdmin && " Vedoucí technik může vytvořit pouze roli Technik."}
                 </p>
               </div>
 
@@ -814,22 +820,30 @@ export default function TechniciansPage() {
               </Field>
 
               <Field label="Role">
-                <select
-                  value={newUserForm.role}
-                  onChange={(event) =>
-                    setNewUserForm({
-                      ...newUserForm,
-                      role: event.target.value as ProfileRole,
-                    })
-                  }
-                  style={styles.input}
-                >
-                  {Object.entries(roleLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                {isAdmin ? (
+                  <select
+                    value={newUserForm.role}
+                    onChange={(event) =>
+                      setNewUserForm({
+                        ...newUserForm,
+                        role: event.target.value as ProfileRole,
+                      })
+                    }
+                    style={styles.input}
+                  >
+                    {Object.entries(roleLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value="Technik"
+                    disabled
+                    style={styles.disabledInput}
+                  />
+                )}
               </Field>
 
               <Field label="Primární rajon">
@@ -970,7 +984,8 @@ export default function TechniciansPage() {
               <div>
                 <h2 style={styles.cardTitle}>Upravit technika</h2>
                 <p style={styles.cardDescription}>
-                  Změna jména, telefonu, role, aktivity, revizí a rajonů.
+                  Změna jména, telefonu, aktivity, revizí a rajonů.
+                  {!isAdmin && " Roli může měnit pouze admin."}
                 </p>
               </div>
 
@@ -1025,22 +1040,30 @@ export default function TechniciansPage() {
               </Field>
 
               <Field label="Role">
-                <select
-                  value={editingProfile.role}
-                  onChange={(event) =>
-                    setEditingProfile({
-                      ...editingProfile,
-                      role: event.target.value as ProfileRole,
-                    })
-                  }
-                  style={styles.input}
-                >
-                  {Object.entries(roleLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                {isAdmin ? (
+                  <select
+                    value={editingProfile.role}
+                    onChange={(event) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        role: event.target.value as ProfileRole,
+                      })
+                    }
+                    style={styles.input}
+                  >
+                    {Object.entries(roleLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={roleLabels[editingProfile.role]}
+                    disabled
+                    style={styles.disabledInput}
+                  />
+                )}
               </Field>
 
               <Field label="Primární rajon">
