@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 
   const { data: currentProfile, error: currentProfileError } = await adminClient
     .from("profiles")
-    .select("id, role")
+    .select("id, role, active")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -77,12 +77,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (
-    currentProfile.role !== "admin" &&
-    currentProfile.role !== "vedouci_technik"
-  ) {
+  if (!currentProfile.active) {
     return NextResponse.json(
-      { error: "Uživatele může mazat jen admin nebo vedoucí technik." },
+      { error: "Neaktivní uživatel nemůže mazat účty." },
+      { status: 403 }
+    );
+  }
+
+  if (currentProfile.role !== "admin") {
+    return NextResponse.json(
+      {
+        error:
+          "Uživatele může trvale mazat pouze admin. Vedoucí technik a sekretariát mohou uživatele pouze deaktivovat.",
+      },
       { status: 403 }
     );
   }
@@ -150,7 +157,7 @@ export async function POST(request: NextRequest) {
   if (deleteProfileError) {
     return NextResponse.json(
       {
-        error: `Nepodařilo se smazat profil z databáze. Uživatel má nejspíš vazbu na poruchy, servisní záznamy nebo zprávy. V takovém případě ho radši nastav jako neaktivního. Chyba: ${deleteProfileError.message}`,
+        error: `Nepodařilo se smazat profil z databáze. Uživatel má nejspíš vazbu na poruchy, servisní záznamy nebo zprávy. V takovém případě ho nastav jako neaktivního. Chyba: ${deleteProfileError.message}`,
       },
       { status: 400 }
     );

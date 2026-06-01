@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
   const { data: currentProfile, error: currentProfileError } = await adminClient
     .from("profiles")
-    .select("id, role")
+    .select("id, role, active")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -100,12 +100,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (
-    currentProfile.role !== "admin" &&
-    currentProfile.role !== "vedouci_technik"
-  ) {
+  if (!currentProfile.active) {
     return NextResponse.json(
-      { error: "Nové uživatele může vytvářet jen admin nebo vedoucí technik." },
+      { error: "Neaktivní uživatel nemůže vytvářet nové účty." },
+      { status: 403 }
+    );
+  }
+
+  const canCreateUser =
+    currentProfile.role === "admin" ||
+    currentProfile.role === "vedouci_technik" ||
+    currentProfile.role === "sekretariat";
+
+  if (!canCreateUser) {
+    return NextResponse.json(
+      {
+        error:
+          "Nové uživatele může vytvářet jen admin, vedoucí technik nebo sekretariát.",
+      },
       { status: 403 }
     );
   }
@@ -125,10 +137,15 @@ export async function POST(request: NextRequest) {
   const password = payload.password?.trim();
   const fullName = payload.full_name?.trim();
   const phone = payload.phone?.trim() || null;
-  const role = payload.role;
+
+  const requestedRole = payload.role;
+  const role: ProfileRole =
+    currentProfile.role === "admin" ? requestedRole : "technik";
+
   const primaryRegionId = payload.primary_region_id || null;
   const canDoInspections = Boolean(payload.can_do_inspections);
   const active = Boolean(payload.active);
+
   const secondaryRegionIds = Array.isArray(payload.secondary_region_ids)
     ? payload.secondary_region_ids.filter(Boolean)
     : [];

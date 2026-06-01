@@ -111,9 +111,12 @@ export default function TechniciansPage() {
 
   const isAdmin = currentProfile?.role === "admin";
 
-  const isAdminOrLead =
+  const canManageUsers =
     currentProfile?.role === "admin" ||
-    currentProfile?.role === "vedouci_technik";
+    currentProfile?.role === "vedouci_technik" ||
+    currentProfile?.role === "sekretariat";
+
+  const canDeleteUsers = currentProfile?.role === "admin";
 
   const activeProfilesCount = useMemo(() => {
     return profiles.filter((profile) => profile.active).length;
@@ -265,6 +268,12 @@ export default function TechniciansPage() {
   }, []);
 
   function startCreateUser() {
+    if (!canManageUsers) {
+      setMessage("Nemáš oprávnění přidávat uživatele.");
+      setSuccessMessage("");
+      return;
+    }
+
     setMessage("");
     setSuccessMessage("");
     setEditingProfile(null);
@@ -303,8 +312,10 @@ export default function TechniciansPage() {
   async function saveNewUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!isAdminOrLead) {
-      setMessage("Nové uživatele může vytvářet jen admin nebo vedoucí technik.");
+    if (!canManageUsers) {
+      setMessage(
+        "Nové uživatele může vytvářet jen admin, vedoucí technik nebo sekretariát."
+      );
       setSuccessMessage("");
       return;
     }
@@ -402,6 +413,12 @@ export default function TechniciansPage() {
   }
 
   function startEditing(profile: Profile) {
+    if (!canManageUsers) {
+      setMessage("Nemáš oprávnění upravovat uživatele.");
+      setSuccessMessage("");
+      return;
+    }
+
     setMessage("");
     setSuccessMessage("");
     setShowCreateForm(false);
@@ -436,6 +453,12 @@ export default function TechniciansPage() {
 
     if (!editingProfile) return;
 
+    if (!canManageUsers) {
+      setMessage("Nemáš oprávnění upravovat uživatele.");
+      setSuccessMessage("");
+      return;
+    }
+
     const fullName = editingProfile.full_name.trim();
 
     if (!fullName) {
@@ -446,7 +469,7 @@ export default function TechniciansPage() {
 
     setSaving(true);
     setMessage("");
-    setSuccessMessage("Ukládám technika...");
+    setSuccessMessage("Ukládám uživatele...");
 
     const supabase = createClient();
 
@@ -468,7 +491,7 @@ export default function TechniciansPage() {
     if (profileUpdateError) {
       setSaving(false);
       setSuccessMessage("");
-      setMessage(`Chyba při ukládání technika: ${profileUpdateError.message}`);
+      setMessage(`Chyba při ukládání uživatele: ${profileUpdateError.message}`);
       return;
     }
 
@@ -511,15 +534,15 @@ export default function TechniciansPage() {
     }
 
     setSaving(false);
-    setSuccessMessage(`Technik upraven: ${fullName}`);
+    setSuccessMessage(`Uživatel upraven: ${fullName}`);
     setEditingProfile(null);
     setEditingSecondaryRegionIds([]);
     await loadData();
   }
 
   async function deleteProfile(profile: Profile) {
-    if (!isAdminOrLead) {
-      setMessage("Uživatele může mazat jen admin nebo vedoucí technik.");
+    if (!canDeleteUsers) {
+      setMessage("Uživatele může trvale mazat pouze admin.");
       setSuccessMessage("");
       return;
     }
@@ -672,7 +695,7 @@ export default function TechniciansPage() {
           </div>
 
           <div style={styles.topbarActions}>
-            {isAdminOrLead && (
+            {canManageUsers && (
               <button onClick={startCreateUser} style={styles.primaryButton}>
                 + Přidat uživatele
               </button>
@@ -741,14 +764,14 @@ export default function TechniciansPage() {
           </div>
         </section>
 
-        {showCreateForm && (
+        {showCreateForm && canManageUsers && (
           <form onSubmit={saveNewUser} style={styles.card}>
             <div style={styles.formTop}>
               <div>
                 <h2 style={styles.cardTitle}>Přidat uživatele</h2>
                 <p style={styles.cardDescription}>
                   Vytvoří se účet v Supabase Auth a zároveň profil v aplikaci.
-                  {!isAdmin && " Vedoucí technik může vytvořit pouze roli Technik."}
+                  {!isAdmin && " Vedoucí technik a sekretariát mohou vytvořit pouze roli Technik."}
                 </p>
               </div>
 
@@ -978,14 +1001,14 @@ export default function TechniciansPage() {
           </form>
         )}
 
-        {editingProfile && (
+        {editingProfile && canManageUsers && (
           <form onSubmit={saveProfile} style={styles.card}>
             <div style={styles.formTop}>
               <div>
-                <h2 style={styles.cardTitle}>Upravit technika</h2>
+                <h2 style={styles.cardTitle}>Upravit uživatele</h2>
                 <p style={styles.cardDescription}>
-                  Změna jména, telefonu, aktivity, revizí a rajonů.
-                  {!isAdmin && " Roli může měnit pouze admin."}
+                  Admin může měnit vše. Vedoucí technik a sekretariát mohou
+                  upravovat údaje kromě role.
                 </p>
               </div>
 
@@ -1127,7 +1150,7 @@ export default function TechniciansPage() {
                 />
                 <span>
                   <strong>Aktivní uživatel</strong>
-                  <small>Neaktivní uživatel zůstane v databázi.</small>
+                  <small>Vypnutím uživatele ho deaktivuješ bez smazání.</small>
                 </span>
               </label>
             </div>
@@ -1294,30 +1317,34 @@ export default function TechniciansPage() {
                       )}
                     </div>
 
-                    <div style={styles.profileActions}>
-                      <button
-                        onClick={() => startEditing(profile)}
-                        style={styles.editButton}
-                      >
-                        Upravit
-                      </button>
+                    {(canManageUsers || canDeleteUsers) && (
+                      <div style={styles.profileActions}>
+                        {canManageUsers && (
+                          <button
+                            onClick={() => startEditing(profile)}
+                            style={styles.editButton}
+                          >
+                            Upravit
+                          </button>
+                        )}
 
-                      {isAdminOrLead && currentProfile?.id !== profile.id && (
-                        <button
-                          onClick={() => deleteProfile(profile)}
-                          disabled={deletingProfileId === profile.id}
-                          style={{
-                            ...styles.deleteButton,
-                            opacity:
-                              deletingProfileId === profile.id ? 0.7 : 1,
-                          }}
-                        >
-                          {deletingProfileId === profile.id
-                            ? "Mažu..."
-                            : "Smazat"}
-                        </button>
-                      )}
-                    </div>
+                        {canDeleteUsers && currentProfile?.id !== profile.id && (
+                          <button
+                            onClick={() => deleteProfile(profile)}
+                            disabled={deletingProfileId === profile.id}
+                            style={{
+                              ...styles.deleteButton,
+                              opacity:
+                                deletingProfileId === profile.id ? 0.7 : 1,
+                            }}
+                          >
+                            {deletingProfileId === profile.id
+                              ? "Mažu..."
+                              : "Smazat"}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div style={styles.detailGrid}>
