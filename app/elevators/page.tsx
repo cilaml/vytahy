@@ -152,6 +152,16 @@ function roleCanDeleteElevators(role: string | undefined) {
   return role === "admin" || role === "vedouci_technik";
 }
 
+function getUniqueOptions(values: Array<string | number | null | undefined>) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b, "cs"));
+}
+
 export default function ElevatorsPage() {
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
 
@@ -184,6 +194,36 @@ export default function ElevatorsPage() {
   const canManageElevators = roleCanManageElevators(currentProfile?.role);
 
   const canDeleteElevators = roleCanDeleteElevators(currentProfile?.role);
+
+  const manufacturerOptions = useMemo(() => {
+    return getUniqueOptions(elevators.map((elevator) => elevator.manufacturer));
+  }, [elevators]);
+
+  const elevatorTypeOptions = useMemo(() => {
+    return getUniqueOptions(elevators.map((elevator) => elevator.elevator_type));
+  }, [elevators]);
+
+  const capacityOptions = useMemo(() => {
+    return getUniqueOptions(elevators.map((elevator) => elevator.capacity));
+  }, [elevators]);
+
+  const stationsCountOptions = useMemo(() => {
+    return getUniqueOptions(
+      elevators.map((elevator) => elevator.stations_count)
+    );
+  }, [elevators]);
+
+  const contactCompanyOptions = useMemo(() => {
+    return getUniqueOptions(
+      elevators.map((elevator) => elevator.contact_company)
+    );
+  }, [elevators]);
+
+  const contactManagerOptions = useMemo(() => {
+    return getUniqueOptions(
+      elevators.map((elevator) => elevator.contact_manager)
+    );
+  }, [elevators]);
 
   function getRegionName(regionId: string | null) {
     if (!regionId) return "Bez rajonu";
@@ -263,6 +303,7 @@ export default function ElevatorsPage() {
         elevator.manufacturer,
         elevator.elevator_type,
         elevator.capacity,
+        elevator.stations_count,
         getRegionName(elevator.region_id),
         getInspectionTechnicianName(elevator.inspection_technician_id),
       ];
@@ -343,8 +384,8 @@ export default function ElevatorsPage() {
     );
 
     const elevatorSelect = canLoadContactColumns
-  ? `${baseElevatorSelect},${contactElevatorSelect}`
-  : baseElevatorSelect;
+      ? `${baseElevatorSelect},${contactElevatorSelect}`
+      : baseElevatorSelect;
 
     const { data: elevatorsData, error: elevatorsError } = await supabase
       .from("elevators")
@@ -386,10 +427,10 @@ export default function ElevatorsPage() {
 
     setCurrentProfile(loadedProfile);
     setElevators(
-  ((elevatorsData ?? []) as unknown as Partial<Elevator>[]).map((item) =>
-    normalizeElevator(item)
-  )
-);
+      ((elevatorsData ?? []) as unknown as Partial<Elevator>[]).map((item) =>
+        normalizeElevator(item)
+      )
+    );
     setRegions((regionsData ?? []) as Region[]);
     setInspectionTechnicians(
       (techniciansData ?? []) as InspectionTechnician[]
@@ -763,6 +804,46 @@ export default function ElevatorsPage() {
 
         {showForm && canManageElevators && (
           <form onSubmit={saveElevator} style={styles.card}>
+            <datalist id="manufacturer-options">
+              {manufacturerOptions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+
+            <datalist id="elevator-type-options">
+              {elevatorTypeOptions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+
+            <datalist id="capacity-options">
+              {capacityOptions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+
+            <datalist id="stations-count-options">
+              {stationsCountOptions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+
+            {canViewElevatorContacts && (
+              <>
+                <datalist id="contact-company-options">
+                  {contactCompanyOptions.map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
+
+                <datalist id="contact-manager-options">
+                  {contactManagerOptions.map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
+              </>
+            )}
+
             <div style={styles.formTop}>
               <div>
                 <h2 style={styles.cardTitle}>
@@ -865,6 +946,7 @@ export default function ElevatorsPage() {
               <Field label="Typ">
                 <input
                   value={form.elevator_type}
+                  list="elevator-type-options"
                   onChange={(event) =>
                     updateForm("elevator_type", event.target.value)
                   }
@@ -875,6 +957,7 @@ export default function ElevatorsPage() {
               <Field label="Výrobce">
                 <input
                   value={form.manufacturer}
+                  list="manufacturer-options"
                   onChange={(event) =>
                     updateForm("manufacturer", event.target.value)
                   }
@@ -905,6 +988,7 @@ export default function ElevatorsPage() {
               <Field label="Nosnost">
                 <input
                   value={form.capacity}
+                  list="capacity-options"
                   onChange={(event) =>
                     updateForm("capacity", event.target.value)
                   }
@@ -916,6 +1000,7 @@ export default function ElevatorsPage() {
               <Field label="Počet stanic">
                 <input
                   value={form.stations_count}
+                  list="stations-count-options"
                   onChange={(event) =>
                     updateForm("stations_count", event.target.value)
                   }
@@ -930,6 +1015,7 @@ export default function ElevatorsPage() {
                 <Field label="Firma / SVJ">
                   <input
                     value={form.contact_company}
+                    list="contact-company-options"
                     onChange={(event) =>
                       updateForm("contact_company", event.target.value)
                     }
@@ -940,6 +1026,7 @@ export default function ElevatorsPage() {
                 <Field label="Správce">
                   <input
                     value={form.contact_manager}
+                    list="contact-manager-options"
                     onChange={(event) =>
                       updateForm("contact_manager", event.target.value)
                     }
