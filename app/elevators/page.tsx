@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -132,6 +132,8 @@ const baseElevatorSelect =
 const contactElevatorSelect =
   "contact_company, contact_manager, contact_phone, contact_email";
 
+const ITEMS_PER_PAGE = 10;
+
 function roleCanViewElevatorContacts(role: string | undefined) {
   return (
     role === "admin" ||
@@ -177,6 +179,7 @@ export default function ElevatorsPage() {
   const [search, setSearch] = useState("");
   const [regionFilter, setRegionFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -192,7 +195,6 @@ export default function ElevatorsPage() {
   );
 
   const canManageElevators = roleCanManageElevators(currentProfile?.role);
-
   const canDeleteElevators = roleCanDeleteElevators(currentProfile?.role);
 
   const manufacturerOptions = useMemo(() => {
@@ -337,6 +339,42 @@ export default function ElevatorsPage() {
     canViewElevatorContacts,
   ]);
 
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredElevators.length / ITEMS_PER_PAGE)
+  );
+
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedElevators = useMemo(() => {
+    const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+
+    return filteredElevators.slice(startIndex, endIndex);
+  }, [filteredElevators, safeCurrentPage]);
+
+  const paginationStart =
+    filteredElevators.length === 0
+      ? 0
+      : (safeCurrentPage - 1) * ITEMS_PER_PAGE + 1;
+
+  const paginationEnd = Math.min(
+    safeCurrentPage * ITEMS_PER_PAGE,
+    filteredElevators.length
+  );
+
+  const visiblePageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const start = Math.max(1, safeCurrentPage - 2);
+    const end = Math.min(totalPages, safeCurrentPage + 2);
+
+    for (let page = start; page <= end; page += 1) {
+      pages.push(page);
+    }
+
+    return pages;
+  }, [safeCurrentPage, totalPages]);
+
   const activeElevatorsCount = useMemo(() => {
     return elevators.filter((elevator) => elevator.status === "aktivni").length;
   }, [elevators]);
@@ -353,6 +391,10 @@ export default function ElevatorsPage() {
     return elevators.filter((elevator) => !elevator.inspection_technician_id)
       .length;
   }, [elevators]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, regionFilter, statusFilter]);
 
   async function loadData() {
     setLoading(true);
@@ -804,46 +846,6 @@ export default function ElevatorsPage() {
 
         {showForm && canManageElevators && (
           <form onSubmit={saveElevator} style={styles.card}>
-            <datalist id="manufacturer-options">
-              {manufacturerOptions.map((value) => (
-                <option key={value} value={value} />
-              ))}
-            </datalist>
-
-            <datalist id="elevator-type-options">
-              {elevatorTypeOptions.map((value) => (
-                <option key={value} value={value} />
-              ))}
-            </datalist>
-
-            <datalist id="capacity-options">
-              {capacityOptions.map((value) => (
-                <option key={value} value={value} />
-              ))}
-            </datalist>
-
-            <datalist id="stations-count-options">
-              {stationsCountOptions.map((value) => (
-                <option key={value} value={value} />
-              ))}
-            </datalist>
-
-            {canViewElevatorContacts && (
-              <>
-                <datalist id="contact-company-options">
-                  {contactCompanyOptions.map((value) => (
-                    <option key={value} value={value} />
-                  ))}
-                </datalist>
-
-                <datalist id="contact-manager-options">
-                  {contactManagerOptions.map((value) => (
-                    <option key={value} value={value} />
-                  ))}
-                </datalist>
-              </>
-            )}
-
             <div style={styles.formTop}>
               <div>
                 <h2 style={styles.cardTitle}>
@@ -944,24 +946,20 @@ export default function ElevatorsPage() {
               </Field>
 
               <Field label="Typ">
-                <input
+                <SuggestInput
                   value={form.elevator_type}
-                  list="elevator-type-options"
-                  onChange={(event) =>
-                    updateForm("elevator_type", event.target.value)
-                  }
-                  style={styles.input}
+                  options={elevatorTypeOptions}
+                  onChange={(value) => updateForm("elevator_type", value)}
+                  placeholder="Klikni nebo napiš typ"
                 />
               </Field>
 
               <Field label="Výrobce">
-                <input
+                <SuggestInput
                   value={form.manufacturer}
-                  list="manufacturer-options"
-                  onChange={(event) =>
-                    updateForm("manufacturer", event.target.value)
-                  }
-                  style={styles.input}
+                  options={manufacturerOptions}
+                  onChange={(value) => updateForm("manufacturer", value)}
+                  placeholder="Klikni nebo napiš výrobce"
                 />
               </Field>
 
@@ -986,25 +984,20 @@ export default function ElevatorsPage() {
               </Field>
 
               <Field label="Nosnost">
-                <input
+                <SuggestInput
                   value={form.capacity}
-                  list="capacity-options"
-                  onChange={(event) =>
-                    updateForm("capacity", event.target.value)
-                  }
-                  style={styles.input}
+                  options={capacityOptions}
+                  onChange={(value) => updateForm("capacity", value)}
                   placeholder="Např. 630 kg"
                 />
               </Field>
 
               <Field label="Počet stanic">
-                <input
+                <SuggestInput
                   value={form.stations_count}
-                  list="stations-count-options"
-                  onChange={(event) =>
-                    updateForm("stations_count", event.target.value)
-                  }
-                  style={styles.input}
+                  options={stationsCountOptions}
+                  onChange={(value) => updateForm("stations_count", value)}
+                  placeholder="Klikni nebo napiš počet"
                   inputMode="numeric"
                 />
               </Field>
@@ -1013,24 +1006,20 @@ export default function ElevatorsPage() {
             {canViewElevatorContacts && (
               <FormSection title="Kontakt">
                 <Field label="Firma / SVJ">
-                  <input
+                  <SuggestInput
                     value={form.contact_company}
-                    list="contact-company-options"
-                    onChange={(event) =>
-                      updateForm("contact_company", event.target.value)
-                    }
-                    style={styles.input}
+                    options={contactCompanyOptions}
+                    onChange={(value) => updateForm("contact_company", value)}
+                    placeholder="Klikni nebo napiš firmu"
                   />
                 </Field>
 
                 <Field label="Správce">
-                  <input
+                  <SuggestInput
                     value={form.contact_manager}
-                    list="contact-manager-options"
-                    onChange={(event) =>
-                      updateForm("contact_manager", event.target.value)
-                    }
-                    style={styles.input}
+                    options={contactManagerOptions}
+                    onChange={(value) => updateForm("contact_manager", value)}
+                    placeholder="Klikni nebo napiš správce"
                   />
                 </Field>
 
@@ -1179,8 +1168,8 @@ export default function ElevatorsPage() {
             <div>
               <h2 style={styles.cardTitle}>Seznam výtahů</h2>
               <p style={styles.cardDescription}>
-                Zobrazeno {filteredElevators.length} z {elevators.length}{" "}
-                výtahů.
+                Zobrazeno {paginationStart}–{paginationEnd} z{" "}
+                {filteredElevators.length} výtahů.
               </p>
             </div>
 
@@ -1224,135 +1213,332 @@ export default function ElevatorsPage() {
           {loading ? (
             <div style={styles.emptyInner}>Načítám výtahy...</div>
           ) : (
-            <div style={styles.elevatorList}>
-              {filteredElevators.length === 0 && (
-                <div style={styles.emptyInner}>
-                  Zatím tu není žádný výtah podle vybraných filtrů.
-                </div>
-              )}
+            <>
+              <div style={styles.elevatorList}>
+                {filteredElevators.length === 0 && (
+                  <div style={styles.emptyInner}>
+                    Zatím tu není žádný výtah podle vybraných filtrů.
+                  </div>
+                )}
 
-              {filteredElevators.map((elevator) => {
-                const isDeleting = deletingElevatorId === elevator.id;
+                {paginatedElevators.map((elevator) => {
+                  const isDeleting = deletingElevatorId === elevator.id;
 
-                return (
-                  <article key={elevator.id} style={styles.elevatorCard}>
-                    <div style={styles.elevatorTop}>
-                      <div>
-                        <div style={styles.titleRow}>
-                          <h3 style={styles.elevatorTitle}>{elevator.label}</h3>
-                          <StatusPill status={elevator.status} />
+                  return (
+                    <article key={elevator.id} style={styles.elevatorCard}>
+                      <div style={styles.elevatorTop}>
+                        <div>
+                          <div style={styles.titleRow}>
+                            <h3 style={styles.elevatorTitle}>
+                              {elevator.label}
+                            </h3>
+                            <StatusPill status={elevator.status} />
+                          </div>
+
+                          <p style={styles.elevatorAddress}>
+                            {elevator.address}
+                          </p>
                         </div>
 
-                        <p style={styles.elevatorAddress}>{elevator.address}</p>
-                      </div>
+                        {(canManageElevators || canDeleteElevators) && (
+                          <div style={styles.elevatorActions}>
+                            {canManageElevators && (
+                              <button
+                                onClick={() => startEdit(elevator)}
+                                style={styles.editButton}
+                              >
+                                Upravit
+                              </button>
+                            )}
 
-                      {(canManageElevators || canDeleteElevators) && (
-                        <div style={styles.elevatorActions}>
-                          {canManageElevators && (
-                            <button
-                              onClick={() => startEdit(elevator)}
-                              style={styles.editButton}
-                            >
-                              Upravit
-                            </button>
-                          )}
-
-                          {canDeleteElevators && (
-                            <button
-                              type="button"
-                              disabled={isDeleting}
-                              onClick={() => deleteElevator(elevator)}
-                              style={{
-                                ...styles.deleteButton,
-                                opacity: isDeleting ? 0.7 : 1,
-                              }}
-                            >
-                              {isDeleting ? "Mažu..." : "Smazat"}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={styles.pillRow}>
-                      <span style={styles.pill}>
-                        Rajon: {getRegionName(elevator.region_id)}
-                      </span>
-                      <span style={styles.pill}>
-                        Revize:{" "}
-                        {getInspectionTechnicianName(
-                          elevator.inspection_technician_id
+                            {canDeleteElevators && (
+                              <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => deleteElevator(elevator)}
+                                style={{
+                                  ...styles.deleteButton,
+                                  opacity: isDeleting ? 0.7 : 1,
+                                }}
+                              >
+                                {isDeleting ? "Mažu..." : "Smazat"}
+                              </button>
+                            )}
+                          </div>
                         )}
-                      </span>
-                    </div>
+                      </div>
 
-                    <div style={styles.detailGrid}>
-                      <Detail label="PR" value={elevator.pr_number || "—"} />
-                      <Detail label="PL" value={elevator.pl_number || "—"} />
-                      <Detail
-                        label="Výr. číslo"
-                        value={elevator.serial_number || "—"}
-                      />
-                      <Detail
-                        label="Výrobce"
-                        value={elevator.manufacturer || "—"}
-                      />
-                      <Detail label="Typ" value={elevator.elevator_type || "—"} />
-                      <Detail label="Nosnost" value={elevator.capacity || "—"} />
-                    </div>
+                      <div style={styles.pillRow}>
+                        <span style={styles.pill}>
+                          Rajon: {getRegionName(elevator.region_id)}
+                        </span>
+                        <span style={styles.pill}>
+                          Revize:{" "}
+                          {getInspectionTechnicianName(
+                            elevator.inspection_technician_id
+                          )}
+                        </span>
+                      </div>
 
-                    <div style={styles.revisionBox}>
-                      <RevisionLine
-                        label="OP"
-                        lastDate={elevator.last_op_date}
-                        interval={`${elevator.op_interval_months} měs.`}
-                      />
-                      <RevisionLine
-                        label="OZ"
-                        lastDate={elevator.last_oz_date}
-                        interval={`${elevator.oz_interval_months} měs.`}
-                      />
-                      <RevisionLine
-                        label="IP"
-                        lastDate={elevator.last_ip_date}
-                        interval={`${elevator.ip_interval_years} let`}
-                      />
-                    </div>
+                      <div style={styles.detailGrid}>
+                        <Detail label="PR" value={elevator.pr_number || "—"} />
+                        <Detail label="PL" value={elevator.pl_number || "—"} />
+                        <Detail
+                          label="Výr. číslo"
+                          value={elevator.serial_number || "—"}
+                        />
+                        <Detail
+                          label="Výrobce"
+                          value={elevator.manufacturer || "—"}
+                        />
+                        <Detail
+                          label="Typ"
+                          value={elevator.elevator_type || "—"}
+                        />
+                        <Detail
+                          label="Nosnost"
+                          value={elevator.capacity || "—"}
+                        />
+                      </div>
 
-                    {canViewElevatorContacts &&
-                      (elevator.contact_company ||
-                        elevator.contact_manager ||
-                        elevator.contact_phone ||
-                        elevator.contact_email) && (
+                      <div style={styles.revisionBox}>
+                        <RevisionLine
+                          label="OP"
+                          lastDate={elevator.last_op_date}
+                          interval={`${elevator.op_interval_months} měs.`}
+                        />
+                        <RevisionLine
+                          label="OZ"
+                          lastDate={elevator.last_oz_date}
+                          interval={`${elevator.oz_interval_months} měs.`}
+                        />
+                        <RevisionLine
+                          label="IP"
+                          lastDate={elevator.last_ip_date}
+                          interval={`${elevator.ip_interval_years} let`}
+                        />
+                      </div>
+
+                      {canViewElevatorContacts &&
+                        (elevator.contact_company ||
+                          elevator.contact_manager ||
+                          elevator.contact_phone ||
+                          elevator.contact_email) && (
+                          <div style={styles.noteBox}>
+                            <strong>Kontakt: </strong>
+                            {elevator.contact_company || "—"}
+                            {elevator.contact_manager
+                              ? ` · ${elevator.contact_manager}`
+                              : ""}
+                            {elevator.contact_phone
+                              ? ` · ${elevator.contact_phone}`
+                              : ""}
+                            {elevator.contact_email
+                              ? ` · ${elevator.contact_email}`
+                              : ""}
+                          </div>
+                        )}
+
+                      {elevator.note && (
                         <div style={styles.noteBox}>
-                          <strong>Kontakt: </strong>
-                          {elevator.contact_company || "—"}
-                          {elevator.contact_manager
-                            ? ` · ${elevator.contact_manager}`
-                            : ""}
-                          {elevator.contact_phone
-                            ? ` · ${elevator.contact_phone}`
-                            : ""}
-                          {elevator.contact_email
-                            ? ` · ${elevator.contact_email}`
-                            : ""}
+                          <strong>Poznámka: </strong>
+                          {elevator.note}
                         </div>
                       )}
+                    </article>
+                  );
+                })}
+              </div>
 
-                    {elevator.note && (
-                      <div style={styles.noteBox}>
-                        <strong>Poznámka: </strong>
-                        {elevator.note}
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
+              {filteredElevators.length > 0 && (
+                <Pagination
+                  currentPage={safeCurrentPage}
+                  totalPages={totalPages}
+                  visiblePageNumbers={visiblePageNumbers}
+                  onPageChange={setCurrentPage}
+                  start={paginationStart}
+                  end={paginationEnd}
+                  total={filteredElevators.length}
+                />
+              )}
+            </>
           )}
         </section>
       </section>
     </main>
+  );
+}
+
+function SuggestInput({
+  value,
+  options,
+  onChange,
+  placeholder,
+  inputMode,
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  placeholder?: string;
+  inputMode?: "text" | "numeric" | "decimal" | "tel" | "search" | "email" | "url";
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredOptions = useMemo(() => {
+    const text = value.trim().toLowerCase();
+
+    if (!text) return options.slice(0, 12);
+
+    return options
+      .filter((option) => option.toLowerCase().includes(text))
+      .slice(0, 12);
+  }, [options, value]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (!wrapperRef.current) return;
+
+      if (!wrapperRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  return (
+    <div ref={wrapperRef} style={styles.suggestWrapper}>
+      <input
+        value={value}
+        inputMode={inputMode}
+        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
+        }}
+        placeholder={placeholder}
+        style={styles.input}
+      />
+
+      {open && filteredOptions.length > 0 && (
+        <div style={styles.suggestMenu}>
+          {filteredOptions.map((option) => (
+            <button
+              type="button"
+              key={option}
+              style={styles.suggestOption}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                onChange(option);
+                setOpen(false);
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Pagination({
+  currentPage,
+  totalPages,
+  visiblePageNumbers,
+  onPageChange,
+  start,
+  end,
+  total,
+}: {
+  currentPage: number;
+  totalPages: number;
+  visiblePageNumbers: number[];
+  onPageChange: (page: number) => void;
+  start: number;
+  end: number;
+  total: number;
+}) {
+  return (
+    <div style={styles.paginationBox}>
+      <div style={styles.paginationInfo}>
+        Zobrazeno {start}–{end} z {total}
+      </div>
+
+      <div style={styles.paginationControls}>
+        <button
+          type="button"
+          disabled={currentPage <= 1}
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          style={{
+            ...styles.pageButton,
+            opacity: currentPage <= 1 ? 0.5 : 1,
+            cursor: currentPage <= 1 ? "not-allowed" : "pointer",
+          }}
+        >
+          Předchozí
+        </button>
+
+        {visiblePageNumbers[0] > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={() => onPageChange(1)}
+              style={styles.pageButton}
+            >
+              1
+            </button>
+            <span style={styles.pageDots}>...</span>
+          </>
+        )}
+
+        {visiblePageNumbers.map((page) => (
+          <button
+            type="button"
+            key={page}
+            onClick={() => onPageChange(page)}
+            style={{
+              ...styles.pageButton,
+              ...(page === currentPage ? styles.pageButtonActive : {}),
+            }}
+          >
+            {page}
+          </button>
+        ))}
+
+        {visiblePageNumbers[visiblePageNumbers.length - 1] < totalPages && (
+          <>
+            <span style={styles.pageDots}>...</span>
+            <button
+              type="button"
+              onClick={() => onPageChange(totalPages)}
+              style={styles.pageButton}
+            >
+              {totalPages}
+            </button>
+          </>
+        )}
+
+        <button
+          type="button"
+          disabled={currentPage >= totalPages}
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          style={{
+            ...styles.pageButton,
+            opacity: currentPage >= totalPages ? 0.5 : 1,
+            cursor: currentPage >= totalPages ? "not-allowed" : "pointer",
+          }}
+        >
+          Další
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1757,6 +1943,38 @@ const styles: Record<string, CSSProperties> = {
     outline: "none",
   },
 
+  suggestWrapper: {
+    position: "relative",
+    width: "100%",
+  },
+
+  suggestMenu: {
+    position: "absolute",
+    zIndex: 50,
+    top: "calc(100% + 6px)",
+    left: 0,
+    right: 0,
+    maxHeight: 230,
+    overflowY: "auto",
+    background: "#020617",
+    border: "1px solid #475569",
+    borderRadius: 14,
+    boxShadow: "0 20px 45px rgba(0,0,0,0.45)",
+    padding: 6,
+  },
+
+  suggestOption: {
+    width: "100%",
+    background: "transparent",
+    border: 0,
+    color: "#f8fafc",
+    textAlign: "left",
+    padding: "10px 11px",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontWeight: 850,
+  },
+
   actions: {
     display: "flex",
     gap: 12,
@@ -1955,5 +2173,50 @@ const styles: Record<string, CSSProperties> = {
     padding: 12,
     color: "#cbd5e1",
     lineHeight: 1.5,
+  },
+
+  paginationBox: {
+    marginTop: 18,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 14,
+    flexWrap: "wrap",
+    background: "#020617",
+    border: "1px solid #334155",
+    borderRadius: 16,
+    padding: 12,
+  },
+
+  paginationInfo: {
+    color: "#cbd5e1",
+    fontWeight: 800,
+  },
+
+  paginationControls: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+
+  pageButton: {
+    background: "#1e293b",
+    border: "1px solid #334155",
+    color: "#f8fafc",
+    borderRadius: 10,
+    padding: "9px 12px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  pageButtonActive: {
+    background: "#2563eb",
+    borderColor: "#60a5fa",
+  },
+
+  pageDots: {
+    color: "#94a3b8",
+    padding: "0 2px",
   },
 };
