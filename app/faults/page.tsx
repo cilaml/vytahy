@@ -610,6 +610,39 @@ export default function FaultsPage() {
     });
   }
 
+  async function notifyFaultCreated(faultId: string) {
+    try {
+      const supabase = createClient();
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        console.warn("Push upozornění se neposlalo: chybí session token.");
+        return;
+      }
+
+      const pushResponse = await fetch("/api/push/fault-created", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          fault_id: faultId,
+        }),
+      });
+
+      if (!pushResponse.ok) {
+        const pushText = await pushResponse.text();
+        console.warn("Push upozornění se nepovedlo odeslat:", pushText);
+      }
+    } catch (pushError) {
+      console.warn("Push upozornění se nepovedlo odeslat:", pushError);
+    }
+  }
+
   async function saveFault(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -832,9 +865,11 @@ export default function FaultsPage() {
       }
     }
 
+    await notifyFaultCreated(insertedFault.id);
+
     setSaving(false);
     resetForm();
-    setSuccessMessage("Porucha byla založena.");
+    setSuccessMessage("Porucha byla založena. Upozornění bylo odesláno.");
     await loadData();
   }
 
