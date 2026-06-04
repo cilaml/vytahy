@@ -611,37 +611,54 @@ export default function FaultsPage() {
   }
 
   async function notifyFaultCreated(faultId: string) {
-    try {
-      const supabase = createClient();
+  try {
+    const supabase = createClient();
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-      if (!session?.access_token) {
-        console.warn("Push upozornění se neposlalo: chybí session token.");
-        return;
-      }
-
-      const pushResponse = await fetch("/api/push/fault-created", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          fault_id: faultId,
-        }),
-      });
-
-      if (!pushResponse.ok) {
-        const pushText = await pushResponse.text();
-        console.warn("Push upozornění se nepovedlo odeslat:", pushText);
-      }
-    } catch (pushError) {
-      console.warn("Push upozornění se nepovedlo odeslat:", pushError);
+    if (!session?.access_token) {
+      console.warn("Push upozornění se neposlalo: chybí session token.");
+      return;
     }
+
+    console.log("Odesílám push upozornění pro poruchu:", faultId);
+
+    const pushResponse = await fetch("/api/push/fault-created", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        fault_id: faultId,
+      }),
+    });
+
+    const pushText = await pushResponse.text();
+
+    let pushResult: unknown = pushText;
+
+    try {
+      pushResult = pushText ? JSON.parse(pushText) : {};
+    } catch {
+      pushResult = pushText;
+    }
+
+    console.log("Výsledek push upozornění:", {
+      status: pushResponse.status,
+      ok: pushResponse.ok,
+      result: pushResult,
+    });
+
+    if (!pushResponse.ok) {
+      console.warn("Push upozornění se nepovedlo odeslat:", pushResult);
+    }
+  } catch (pushError) {
+    console.warn("Push upozornění se nepovedlo odeslat:", pushError);
   }
+}
 
   async function saveFault(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
