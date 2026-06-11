@@ -149,89 +149,6 @@ const inspectionLabels: Record<InspectionType, string> = {
   ip: "IP",
 };
 
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = `${base64String}${padding}`
-    .replace(/-/g, "+")
-    .replace(/_/g, "/");
-
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-
-  for (let i = 0; i < rawData.length; i += 1) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-
-  return outputArray;
-}
-
-function arrayBufferToBase64Url(buffer: ArrayBuffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-
-  for (let i = 0; i < bytes.byteLength; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-
-  return window
-    .btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-
-type PushSubscriptionPayload = {
-  endpoint: string;
-  keys: {
-    p256dh: string;
-    auth: string;
-  };
-};
-
-function getPushSubscriptionPayload(
-  subscription: PushSubscription
-): PushSubscriptionPayload | null {
-  const subscriptionJson = subscription.toJSON() as {
-    endpoint?: string;
-    keys?: {
-      p256dh?: string;
-      auth?: string;
-    };
-  };
-
-  const endpoint = subscriptionJson.endpoint || subscription.endpoint;
-
-  let p256dh = subscriptionJson.keys?.p256dh;
-  let auth = subscriptionJson.keys?.auth;
-
-  if (!p256dh) {
-    const p256dhKey = subscription.getKey("p256dh");
-    if (p256dhKey) {
-      p256dh = arrayBufferToBase64Url(p256dhKey);
-    }
-  }
-
-  if (!auth) {
-    const authKey = subscription.getKey("auth");
-    if (authKey) {
-      auth = arrayBufferToBase64Url(authKey);
-    }
-  }
-
-  if (!endpoint || !p256dh || !auth) {
-    return null;
-  }
-
-  return {
-    endpoint,
-    keys: {
-      p256dh,
-      auth,
-    },
-  };
-}
-
 export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -244,17 +161,12 @@ export default function DashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [notificationSaving, setNotificationSaving] = useState(false);
-  const [notificationEnabled, setNotificationEnabled] = useState(false);
-  const [notificationChecking, setNotificationChecking] = useState(true);
-  const [notificationMessage, setNotificationMessage] = useState("");
 
   const isAdminOrLead =
     profile?.role === "admin" || profile?.role === "vedouci_technik";
 
   useEffect(() => {
     loadDashboard();
-    checkNotificationStatus();
   }, []);
 
   async function loadDashboard() {
@@ -368,240 +280,6 @@ export default function DashboardPage() {
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.href = "/login";
-  }
-
-  async function checkNotificationStatus() {
-    if (typeof window === "undefined") return;
-
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      setNotificationEnabled(false);
-      setNotificationChecking(false);
-      return;
-    }
-
-    try {
-      const registration = await navigator.serviceWorker.getRegistration("/sw.js");
-
-      if (!registration) {
-        setNotificationEnabled(false);
-        setNotificationChecking(false);
-        return;
-      }
-
-      const subscription = await registration.pushManager.getSubscription();
-      setNotificationEnabled(Boolean(subscription));
-      setNotificationChecking(false);
-    } catch {
-      setNotificationEnabled(false);
-      setNotificationChecking(false);
-    }
-  }
-
-  async function enableNotifications() {
-    setNotificationMessage("");
-
-    if (typeof window === "undefined") return;
-
-    if (!("serviceWorker" in navigator)) {
-      setNotificationMessage("Tenhle prohlížeč nepodporuje service worker.");
-      return;
-    }
-
-    if (!("PushManager" in window)) {
-      setNotificationMessage("Tenhle prohlížeč nepodporuje push upozornění.");
-      return;
-    }
-
-    if (!("Notification" in window)) {
-      setNotificationMessage("Tenhle prohlížeč nepodporuje oznámení.");
-      return;
-    }
-
-    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-
-    if (!publicKey) {
-      setNotificationMessage("Chybí veřejný VAPID klíč v nastavení aplikace.");
-      return;
-    }
-
-    setNotificationSaving(true);
-
-    try {
-      const permission = await Notification.requestPermission();
-
-      if (permission !== "granted") {
-        setNotificationMessage("Upozornění nejsou povolená v prohlížeči.");
-        setNotificationSaving(false);
-        return;
-      }
-
-      const registration = await navigator.serviceWorker.register("/sw.js");
-
-      let subscription = await registration.pushManager.getSubscription();
-
-      if (!subscription) {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey),
-        });
-      }
-
-      let subscriptionJson = getPushSubscriptionPayload(subscription);
-
-      if (!subscriptionJson) {
-        await subscription.unsubscribe();
-
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey),
-        });
-
-        subscriptionJson = getPushSubscriptionPayload(subscription);
-      }
-
-      if (!subscriptionJson) {
-        setNotificationMessage(
-          "Push subscription neobsahuje potřebné údaje. Zkus v nastavení prohlížeče smazat oprávnění oznámení pro tuhle stránku a zapnout ho znovu."
-        );
-        setNotificationSaving(false);
-        return;
-      }
-
-      const supabase = createClient();
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        setNotificationMessage("Nejsi přihlášený.");
-        setNotificationSaving(false);
-        return;
-      }
-
-      const response = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          subscription: subscriptionJson,
-          user_agent: navigator.userAgent,
-        }),
-      });
-
-      const responseText = await response.text();
-
-      if (!response.ok) {
-        setNotificationMessage(
-          `Upozornění se nepovedlo zapnout: ${responseText}`
-        );
-        setNotificationSaving(false);
-        return;
-      }
-
-      setNotificationEnabled(true);
-      setNotificationMessage("Upozornění jsou zapnutá.");
-      setNotificationSaving(false);
-    } catch (error) {
-      setNotificationMessage(
-        `Upozornění se nepovedlo zapnout: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      setNotificationSaving(false);
-    }
-  }
-
-  async function disableNotifications() {
-    setNotificationMessage("");
-
-    if (typeof window === "undefined") return;
-
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      setNotificationMessage("Tenhle prohlížeč nepodporuje push upozornění.");
-      return;
-    }
-
-    setNotificationSaving(true);
-
-    try {
-      const registration = await navigator.serviceWorker.getRegistration("/sw.js");
-      const subscription = await registration?.pushManager.getSubscription();
-
-      if (!subscription) {
-        setNotificationEnabled(false);
-        setNotificationMessage("Upozornění jsou vypnutá.");
-        setNotificationSaving(false);
-        return;
-      }
-
-      if (!subscription.endpoint) {
-        setNotificationMessage(
-          "Nepodařilo se zjistit uložené zařízení. Zkus stránku obnovit."
-        );
-        setNotificationSaving(false);
-        return;
-      }
-
-      const supabase = createClient();
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        setNotificationMessage("Nejsi přihlášený.");
-        setNotificationSaving(false);
-        return;
-      }
-
-      const response = await fetch("/api/push/unsubscribe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          endpoint: subscription.endpoint,
-        }),
-      });
-
-      const responseText = await response.text();
-
-      if (!response.ok) {
-        setNotificationMessage(
-          `Upozornění se nepovedlo vypnout: ${responseText}`
-        );
-        setNotificationSaving(false);
-        return;
-      }
-
-      await subscription.unsubscribe();
-
-      setNotificationEnabled(false);
-      setNotificationMessage("Upozornění jsou vypnutá.");
-      setNotificationSaving(false);
-    } catch (error) {
-      setNotificationMessage(
-        `Upozornění se nepovedlo vypnout: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      setNotificationSaving(false);
-    }
-  }
-
-  async function toggleNotifications() {
-    if (notificationSaving || notificationChecking) return;
-
-    if (notificationEnabled) {
-      await disableNotifications();
-      return;
-    }
-
-    await enableNotifications();
   }
 
   function getRegionName(regionId: string | null) {
@@ -899,33 +577,6 @@ export default function DashboardPage() {
         <a href="/faults" className="sidebar-fault-button">
           + Založit poruchu
         </a>
-
-        <button
-          type="button"
-          onClick={toggleNotifications}
-          disabled={notificationSaving || notificationChecking}
-          className={
-            notificationEnabled
-              ? "sidebar-notification-button enabled"
-              : "sidebar-notification-button"
-          }
-        >
-          {notificationChecking
-            ? "Kontroluju upozornění..."
-            : notificationSaving
-              ? notificationEnabled
-                ? "Vypínám upozornění..."
-                : "Zapínám upozornění..."
-              : notificationEnabled
-                ? "Upozornění zapnutá"
-                : "Zapnout upozornění"}
-        </button>
-
-        {notificationMessage && (
-          <div className="sidebar-notification-message">
-            {notificationMessage}
-          </div>
-        )}
 
         <div className="sidebar-spacer" />
 
@@ -1296,49 +947,6 @@ function StyleBlock() {
         background: #b91c1c;
       }
 
-      .sidebar-notification-button {
-        margin-top: 10px;
-        width: 100%;
-        min-height: 48px;
-        border: 0;
-        background: #2563eb;
-        color: white;
-        border-radius: 13px;
-        padding: 13px 14px;
-        font-weight: 950;
-        cursor: pointer;
-        box-shadow: 0 14px 30px rgba(37, 99, 235, 0.22);
-      }
-
-      .sidebar-notification-button:hover {
-        background: #1d4ed8;
-      }
-
-      .sidebar-notification-button.enabled {
-        background: #16a34a;
-        box-shadow: 0 14px 30px rgba(22, 163, 74, 0.22);
-      }
-
-      .sidebar-notification-button.enabled:hover {
-        background: #15803d;
-      }
-
-      .sidebar-notification-button:disabled {
-        cursor: not-allowed;
-        opacity: 0.65;
-      }
-
-      .sidebar-notification-message {
-        margin-top: 10px;
-        background: #020617;
-        border: 1px solid #334155;
-        color: #cbd5e1;
-        border-radius: 12px;
-        padding: 10px;
-        font-size: 13px;
-        line-height: 1.45;
-      }
-
       .sidebar-spacer {
         flex: 1;
         min-height: 14px;
@@ -1637,7 +1245,6 @@ function StyleBlock() {
         }
 
         .sidebar-fault-button,
-        .sidebar-notification-button,
         .logout-button {
           min-height: 48px;
         }
