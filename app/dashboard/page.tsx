@@ -165,6 +165,21 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+function arrayBufferToBase64Url(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+
+  for (let i = 0; i < bytes.byteLength; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+
+  return window
+    .btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
 export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -306,15 +321,13 @@ export default function DashboardPage() {
   async function checkNotificationStatus() {
     if (typeof window === "undefined") return;
 
-    setNotificationChecking(true);
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setNotificationEnabled(false);
+      setNotificationChecking(false);
+      return;
+    }
 
     try {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        setNotificationEnabled(false);
-        setNotificationChecking(false);
-        return;
-      }
-
       const registration = await navigator.serviceWorker.getRegistration("/sw.js");
 
       if (!registration) {
@@ -324,7 +337,6 @@ export default function DashboardPage() {
       }
 
       const subscription = await registration.pushManager.getSubscription();
-
       setNotificationEnabled(Boolean(subscription));
       setNotificationChecking(false);
     } catch {
@@ -382,19 +394,36 @@ export default function DashboardPage() {
         });
       }
 
-      const subscriptionJson = subscription.toJSON();
+      let p256dhKey = subscription.getKey("p256dh");
+      let authKey = subscription.getKey("auth");
 
-      if (
-        !subscriptionJson.endpoint ||
-        !subscriptionJson.keys?.p256dh ||
-        !subscriptionJson.keys?.auth
-      ) {
+      if (!subscription.endpoint || !p256dhKey || !authKey) {
+        await subscription.unsubscribe();
+
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+
+        p256dhKey = subscription.getKey("p256dh");
+        authKey = subscription.getKey("auth");
+      }
+
+      if (!subscription.endpoint || !p256dhKey || !authKey) {
         setNotificationMessage(
-          "Push subscription neobsahuje potřebné údaje. Zkus stránku obnovit a zapnout upozornění znovu."
+          "Push subscription neobsahuje potřebné údaje. Zkus v nastavení prohlížeče smazat oprávnění oznámení pro tuhle stránku a zapnout ho znovu."
         );
         setNotificationSaving(false);
         return;
       }
+
+      const subscriptionJson = {
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: arrayBufferToBase64Url(p256dhKey),
+          auth: arrayBufferToBase64Url(authKey),
+        },
+      };
 
       const supabase = createClient();
 
@@ -466,9 +495,7 @@ export default function DashboardPage() {
         return;
       }
 
-      const subscriptionJson = subscription.toJSON();
-
-      if (!subscriptionJson.endpoint) {
+      if (!subscription.endpoint) {
         setNotificationMessage(
           "Nepodařilo se zjistit uložené zařízení. Zkus stránku obnovit."
         );
@@ -495,7 +522,7 @@ export default function DashboardPage() {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          endpoint: subscriptionJson.endpoint,
+          endpoint: subscription.endpoint,
         }),
       });
 
@@ -842,7 +869,7 @@ export default function DashboardPage() {
           }
         >
           {notificationChecking
-            ? "Zjišťuji upozornění..."
+            ? "Kontroluju upozornění..."
             : notificationSaving
               ? notificationEnabled
                 ? "Vypínám upozornění..."
