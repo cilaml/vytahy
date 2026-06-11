@@ -151,18 +151,19 @@ const inspectionLabels: Record<InspectionType, string> = {
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = `${base64String}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+  const base64 = `${base64String}${padding}`
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
 
   const rawData = window.atob(base64);
   const outputArray = new Uint8Array(rawData.length);
 
-  for (let index = 0; index < rawData.length; index += 1) {
-    outputArray[index] = rawData.charCodeAt(index);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
   }
 
   return outputArray;
 }
-
 
 export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -176,8 +177,8 @@ export default function DashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [notificationMessage, setNotificationMessage] = useState("");
   const [notificationSaving, setNotificationSaving] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState("");
 
   const isAdminOrLead =
     profile?.role === "admin" || profile?.role === "vedouci_technik";
@@ -302,6 +303,8 @@ export default function DashboardPage() {
   async function enableNotifications() {
     setNotificationMessage("");
 
+    if (typeof window === "undefined") return;
+
     if (!("serviceWorker" in navigator)) {
       setNotificationMessage("Tenhle prohlížeč nepodporuje service worker.");
       return;
@@ -317,9 +320,9 @@ export default function DashboardPage() {
       return;
     }
 
-    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
-    if (!vapidPublicKey) {
+    if (!publicKey) {
       setNotificationMessage("Chybí veřejný VAPID klíč v nastavení aplikace.");
       return;
     }
@@ -342,8 +345,22 @@ export default function DashboardPage() {
       if (!subscription) {
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
         });
+      }
+
+      const subscriptionJson = subscription.toJSON();
+
+      if (
+        !subscriptionJson.endpoint ||
+        !subscriptionJson.keys?.p256dh ||
+        !subscriptionJson.keys?.auth
+      ) {
+        setNotificationMessage(
+          "Push subscription neobsahuje potřebné údaje. Zkus stránku obnovit a zapnout upozornění znovu."
+        );
+        setNotificationSaving(false);
+        return;
       }
 
       const supabase = createClient();
@@ -353,7 +370,7 @@ export default function DashboardPage() {
       } = await supabase.auth.getSession();
 
       if (!session?.access_token) {
-        setNotificationMessage("Nejsi přihlášený. Přihlas se znovu.");
+        setNotificationMessage("Nejsi přihlášený.");
         setNotificationSaving(false);
         return;
       }
@@ -365,7 +382,7 @@ export default function DashboardPage() {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          subscription,
+          subscription: subscriptionJson,
           user_agent: navigator.userAgent,
         }),
       });
@@ -381,15 +398,15 @@ export default function DashboardPage() {
       }
 
       setNotificationMessage("Upozornění jsou zapnutá.");
+      setNotificationSaving(false);
     } catch (error) {
       setNotificationMessage(
-        error instanceof Error
-          ? `Upozornění se nepovedlo zapnout: ${error.message}`
-          : "Upozornění se nepovedlo zapnout."
+        `Upozornění se nepovedlo zapnout: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
+      setNotificationSaving(false);
     }
-
-    setNotificationSaving(false);
   }
 
   function getRegionName(regionId: string | null) {
@@ -689,6 +706,7 @@ export default function DashboardPage() {
         </a>
 
         <button
+          type="button"
           onClick={enableNotifications}
           disabled={notificationSaving}
           className="sidebar-notification-button"
@@ -697,7 +715,9 @@ export default function DashboardPage() {
         </button>
 
         {notificationMessage && (
-          <div className="notification-note">{notificationMessage}</div>
+          <div className="sidebar-notification-message">
+            {notificationMessage}
+          </div>
         )}
 
         <div className="sidebar-spacer" />
@@ -1073,17 +1093,14 @@ function StyleBlock() {
         margin-top: 10px;
         width: 100%;
         min-height: 48px;
+        border: 0;
         background: #2563eb;
         color: white;
-        border: 1px solid #60a5fa;
         border-radius: 13px;
         padding: 13px 14px;
         font-weight: 950;
         cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 14px 30px rgba(37, 99, 235, 0.2);
+        box-shadow: 0 14px 30px rgba(37, 99, 235, 0.22);
       }
 
       .sidebar-notification-button:hover {
@@ -1091,19 +1108,19 @@ function StyleBlock() {
       }
 
       .sidebar-notification-button:disabled {
-        opacity: 0.65;
         cursor: not-allowed;
+        opacity: 0.65;
       }
 
-      .notification-note {
-        margin-top: 8px;
+      .sidebar-notification-message {
+        margin-top: 10px;
         background: #020617;
         border: 1px solid #334155;
         color: #cbd5e1;
         border-radius: 12px;
         padding: 10px;
         font-size: 13px;
-        line-height: 1.4;
+        line-height: 1.45;
       }
 
       .sidebar-spacer {
@@ -1352,6 +1369,9 @@ function StyleBlock() {
     grid-template-columns: 1fr;
   }
 }
+
+      @media (max-width: 720px) {
+        .sidebar {
           padding: 12px;
         }
 
