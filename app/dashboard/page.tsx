@@ -149,6 +149,21 @@ const inspectionLabels: Record<InspectionType, string> = {
   ip: "IP",
 };
 
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = `${base64String}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let index = 0; index < rawData.length; index += 1) {
+    outputArray[index] = rawData.charCodeAt(index);
+  }
+
+  return outputArray;
+}
+
+
 export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -161,6 +176,8 @@ export default function DashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [notificationMessage, setNotificationMessage] = useState("");
+  const [notificationSaving, setNotificationSaving] = useState(false);
 
   const isAdminOrLead =
     profile?.role === "admin" || profile?.role === "vedouci_technik";
@@ -280,6 +297,99 @@ export default function DashboardPage() {
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.href = "/login";
+  }
+
+  async function enableNotifications() {
+    setNotificationMessage("");
+
+    if (!("serviceWorker" in navigator)) {
+      setNotificationMessage("Tenhle prohlížeč nepodporuje service worker.");
+      return;
+    }
+
+    if (!("PushManager" in window)) {
+      setNotificationMessage("Tenhle prohlížeč nepodporuje push upozornění.");
+      return;
+    }
+
+    if (!("Notification" in window)) {
+      setNotificationMessage("Tenhle prohlížeč nepodporuje oznámení.");
+      return;
+    }
+
+    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+
+    if (!vapidPublicKey) {
+      setNotificationMessage("Chybí veřejný VAPID klíč v nastavení aplikace.");
+      return;
+    }
+
+    setNotificationSaving(true);
+
+    try {
+      const permission = await Notification.requestPermission();
+
+      if (permission !== "granted") {
+        setNotificationMessage("Upozornění nejsou povolená v prohlížeči.");
+        setNotificationSaving(false);
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.register("/sw.js");
+
+      let subscription = await registration.pushManager.getSubscription();
+
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        });
+      }
+
+      const supabase = createClient();
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setNotificationMessage("Nejsi přihlášený. Přihlas se znovu.");
+        setNotificationSaving(false);
+        return;
+      }
+
+      const response = await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          subscription,
+          user_agent: navigator.userAgent,
+        }),
+      });
+
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        setNotificationMessage(
+          `Upozornění se nepovedlo zapnout: ${responseText}`
+        );
+        setNotificationSaving(false);
+        return;
+      }
+
+      setNotificationMessage("Upozornění jsou zapnutá.");
+    } catch (error) {
+      setNotificationMessage(
+        error instanceof Error
+          ? `Upozornění se nepovedlo zapnout: ${error.message}`
+          : "Upozornění se nepovedlo zapnout."
+      );
+    }
+
+    setNotificationSaving(false);
   }
 
   function getRegionName(regionId: string | null) {
@@ -577,6 +687,18 @@ export default function DashboardPage() {
         <a href="/faults" className="sidebar-fault-button">
           + Založit poruchu
         </a>
+
+        <button
+          onClick={enableNotifications}
+          disabled={notificationSaving}
+          className="sidebar-notification-button"
+        >
+          {notificationSaving ? "Zapínám upozornění..." : "Zapnout upozornění"}
+        </button>
+
+        {notificationMessage && (
+          <div className="notification-note">{notificationMessage}</div>
+        )}
 
         <div className="sidebar-spacer" />
 
@@ -947,6 +1069,43 @@ function StyleBlock() {
         background: #b91c1c;
       }
 
+      .sidebar-notification-button {
+        margin-top: 10px;
+        width: 100%;
+        min-height: 48px;
+        background: #2563eb;
+        color: white;
+        border: 1px solid #60a5fa;
+        border-radius: 13px;
+        padding: 13px 14px;
+        font-weight: 950;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 14px 30px rgba(37, 99, 235, 0.2);
+      }
+
+      .sidebar-notification-button:hover {
+        background: #1d4ed8;
+      }
+
+      .sidebar-notification-button:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+
+      .notification-note {
+        margin-top: 8px;
+        background: #020617;
+        border: 1px solid #334155;
+        color: #cbd5e1;
+        border-radius: 12px;
+        padding: 10px;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
       .sidebar-spacer {
         flex: 1;
         min-height: 14px;
@@ -1242,6 +1401,7 @@ function StyleBlock() {
         }
 
         .sidebar-fault-button,
+        .sidebar-notification-button,
         .logout-button {
           min-height: 48px;
         }
