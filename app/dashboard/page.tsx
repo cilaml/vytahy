@@ -178,6 +178,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [notificationSaving, setNotificationSaving] = useState(false);
+  const [notificationEnabled, setNotificationEnabled] = useState(false);
+  const [notificationChecking, setNotificationChecking] = useState(true);
   const [notificationMessage, setNotificationMessage] = useState("");
 
   const isAdminOrLead =
@@ -185,6 +187,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadDashboard();
+    checkNotificationStatus();
   }, []);
 
   async function loadDashboard() {
@@ -300,6 +303,36 @@ export default function DashboardPage() {
     window.location.href = "/login";
   }
 
+  async function checkNotificationStatus() {
+    if (typeof window === "undefined") return;
+
+    setNotificationChecking(true);
+
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setNotificationEnabled(false);
+        setNotificationChecking(false);
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.getRegistration("/sw.js");
+
+      if (!registration) {
+        setNotificationEnabled(false);
+        setNotificationChecking(false);
+        return;
+      }
+
+      const subscription = await registration.pushManager.getSubscription();
+
+      setNotificationEnabled(Boolean(subscription));
+      setNotificationChecking(false);
+    } catch {
+      setNotificationEnabled(false);
+      setNotificationChecking(false);
+    }
+  }
+
   async function enableNotifications() {
     setNotificationMessage("");
 
@@ -397,6 +430,7 @@ export default function DashboardPage() {
         return;
       }
 
+      setNotificationEnabled(true);
       setNotificationMessage("Upozornění jsou zapnutá.");
       setNotificationSaving(false);
     } catch (error) {
@@ -407,6 +441,98 @@ export default function DashboardPage() {
       );
       setNotificationSaving(false);
     }
+  }
+
+  async function disableNotifications() {
+    setNotificationMessage("");
+
+    if (typeof window === "undefined") return;
+
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setNotificationMessage("Tenhle prohlížeč nepodporuje push upozornění.");
+      return;
+    }
+
+    setNotificationSaving(true);
+
+    try {
+      const registration = await navigator.serviceWorker.getRegistration("/sw.js");
+      const subscription = await registration?.pushManager.getSubscription();
+
+      if (!subscription) {
+        setNotificationEnabled(false);
+        setNotificationMessage("Upozornění jsou vypnutá.");
+        setNotificationSaving(false);
+        return;
+      }
+
+      const subscriptionJson = subscription.toJSON();
+
+      if (!subscriptionJson.endpoint) {
+        setNotificationMessage(
+          "Nepodařilo se zjistit uložené zařízení. Zkus stránku obnovit."
+        );
+        setNotificationSaving(false);
+        return;
+      }
+
+      const supabase = createClient();
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setNotificationMessage("Nejsi přihlášený.");
+        setNotificationSaving(false);
+        return;
+      }
+
+      const response = await fetch("/api/push/unsubscribe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          endpoint: subscriptionJson.endpoint,
+        }),
+      });
+
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        setNotificationMessage(
+          `Upozornění se nepovedlo vypnout: ${responseText}`
+        );
+        setNotificationSaving(false);
+        return;
+      }
+
+      await subscription.unsubscribe();
+
+      setNotificationEnabled(false);
+      setNotificationMessage("Upozornění jsou vypnutá.");
+      setNotificationSaving(false);
+    } catch (error) {
+      setNotificationMessage(
+        `Upozornění se nepovedlo vypnout: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      setNotificationSaving(false);
+    }
+  }
+
+  async function toggleNotifications() {
+    if (notificationSaving || notificationChecking) return;
+
+    if (notificationEnabled) {
+      await disableNotifications();
+      return;
+    }
+
+    await enableNotifications();
   }
 
   function getRegionName(regionId: string | null) {
@@ -707,11 +833,23 @@ export default function DashboardPage() {
 
         <button
           type="button"
-          onClick={enableNotifications}
-          disabled={notificationSaving}
-          className="sidebar-notification-button"
+          onClick={toggleNotifications}
+          disabled={notificationSaving || notificationChecking}
+          className={
+            notificationEnabled
+              ? "sidebar-notification-button enabled"
+              : "sidebar-notification-button"
+          }
         >
-          {notificationSaving ? "Zapínám upozornění..." : "Zapnout upozornění"}
+          {notificationChecking
+            ? "Zjišťuji upozornění..."
+            : notificationSaving
+              ? notificationEnabled
+                ? "Vypínám upozornění..."
+                : "Zapínám upozornění..."
+              : notificationEnabled
+                ? "Upozornění zapnutá"
+                : "Zapnout upozornění"}
         </button>
 
         {notificationMessage && (
@@ -1105,6 +1243,15 @@ function StyleBlock() {
 
       .sidebar-notification-button:hover {
         background: #1d4ed8;
+      }
+
+      .sidebar-notification-button.enabled {
+        background: #16a34a;
+        box-shadow: 0 14px 30px rgba(22, 163, 74, 0.22);
+      }
+
+      .sidebar-notification-button.enabled:hover {
+        background: #15803d;
       }
 
       .sidebar-notification-button:disabled {
