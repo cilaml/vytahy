@@ -1,8 +1,17 @@
+self.addEventListener("install", function (event) {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", function (event) {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener("push", function (event) {
   let data = {
     title: "Výtahy Servis",
     body: "Máš nové upozornění.",
     url: "/dashboard",
+    tag: "vytahy-servis-alert",
   };
 
   if (event.data) {
@@ -19,6 +28,16 @@ self.addEventListener("push", function (event) {
     body: data.body || "Máš nové upozornění.",
     icon: "/icon-192.png",
     badge: "/icon-192.png",
+
+    // důležité pro Android / Chrome
+    silent: false,
+    vibrate: [300, 120, 300, 120, 500],
+    requireInteraction: true,
+
+    // když přijde další porucha, má to znovu upozornit
+    tag: data.tag || "vytahy-servis-alert",
+    renotify: true,
+
     data: {
       url: data.url || "/dashboard",
     },
@@ -33,18 +52,23 @@ self.addEventListener("notificationclick", function (event) {
   const url = event.notification.data?.url || "/dashboard";
 
   event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ("focus" in client) {
-          client.focus();
-          client.navigate(url);
-          return;
+    clients
+      .matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      })
+      .then((clientList) => {
+        for (const client of clientList) {
+          if ("focus" in client) {
+            client.focus();
+            client.navigate(url);
+            return;
+          }
         }
-      }
 
-      if (clients.openWindow) {
-        return clients.openWindow(url);
-      }
-    })
+        if (clients.openWindow) {
+          return clients.openWindow(url);
+        }
+      })
   );
 });
