@@ -180,6 +180,58 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer) {
     .replace(/=+$/g, "");
 }
 
+
+type PushSubscriptionPayload = {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+};
+
+function getPushSubscriptionPayload(
+  subscription: PushSubscription
+): PushSubscriptionPayload | null {
+  const subscriptionJson = subscription.toJSON() as {
+    endpoint?: string;
+    keys?: {
+      p256dh?: string;
+      auth?: string;
+    };
+  };
+
+  const endpoint = subscriptionJson.endpoint || subscription.endpoint;
+
+  let p256dh = subscriptionJson.keys?.p256dh;
+  let auth = subscriptionJson.keys?.auth;
+
+  if (!p256dh) {
+    const p256dhKey = subscription.getKey("p256dh");
+    if (p256dhKey) {
+      p256dh = arrayBufferToBase64Url(p256dhKey);
+    }
+  }
+
+  if (!auth) {
+    const authKey = subscription.getKey("auth");
+    if (authKey) {
+      auth = arrayBufferToBase64Url(authKey);
+    }
+  }
+
+  if (!endpoint || !p256dh || !auth) {
+    return null;
+  }
+
+  return {
+    endpoint,
+    keys: {
+      p256dh,
+      auth,
+    },
+  };
+}
+
 export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -394,10 +446,9 @@ export default function DashboardPage() {
         });
       }
 
-      let p256dhKey = subscription.getKey("p256dh");
-      let authKey = subscription.getKey("auth");
+      let subscriptionJson = getPushSubscriptionPayload(subscription);
 
-      if (!subscription.endpoint || !p256dhKey || !authKey) {
+      if (!subscriptionJson) {
         await subscription.unsubscribe();
 
         subscription = await registration.pushManager.subscribe({
@@ -405,25 +456,16 @@ export default function DashboardPage() {
           applicationServerKey: urlBase64ToUint8Array(publicKey),
         });
 
-        p256dhKey = subscription.getKey("p256dh");
-        authKey = subscription.getKey("auth");
+        subscriptionJson = getPushSubscriptionPayload(subscription);
       }
 
-      if (!subscription.endpoint || !p256dhKey || !authKey) {
+      if (!subscriptionJson) {
         setNotificationMessage(
           "Push subscription neobsahuje potřebné údaje. Zkus v nastavení prohlížeče smazat oprávnění oznámení pro tuhle stránku a zapnout ho znovu."
         );
         setNotificationSaving(false);
         return;
       }
-
-      const subscriptionJson = {
-        endpoint: subscription.endpoint,
-        keys: {
-          p256dh: arrayBufferToBase64Url(p256dhKey),
-          auth: arrayBufferToBase64Url(authKey),
-        },
-      };
 
       const supabase = createClient();
 
