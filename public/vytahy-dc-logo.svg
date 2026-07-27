@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 210" role="img" aria-labelledby="title desc">
+  <title id="title">Výtahy DC</title><desc id="desc">35 let zkušeností v oboru</desc>
+  <rect width="760" height="210" rx="18" fill="#ffffff"/>
+  <g transform="translate(26 27)">
+    <path d="M12 4h42l57 152H68z" fill="#079447"/>
+    <path d="M92 4h77c48 0 79 29 79 76s-31 76-79 76H93l-16-42h89c22 0 36-12 36-34s-14-34-36-34H76z" fill="#082a49"/>
+    <path d="M82 63l15-25 15 25z" fill="#079447"/>
+    <path d="M82 91h30l-15 25z" fill="#082a49"/>
+  </g>
+  <text x="292" y="103" font-family="Arial, Helvetica, sans-serif" font-size="66" font-weight="800" letter-spacing="2" fill="#082a49">VÝTAHY DC</text>
+  <text x="296" y="148" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" letter-spacing="1" fill="#35546d">35 let zkušeností v oboru</text>
+</svg>
