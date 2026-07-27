@@ -4,47 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type UserRole = "admin" | "vedouci_technik" | "technik" | "sekretariat" | "servis";
-
-type Profile = {
-  id: string;
-  email: string;
-  full_name: string;
-  role: UserRole;
-  primary_region_id: string | null;
-  can_do_inspections: boolean;
-  active: boolean;
-};
-
-type ProfileRegion = {
-  id: string;
-  profile_id: string;
-  region_id: string;
-};
-
-type Region = {
-  id: string;
-  name: string;
-};
-
-type Elevator = {
-  id: string;
-  label: string;
-  address: string;
-  region_id: string | null;
-  serial_number: string | null;
-  pr_number: string | null;
-  pl_number: string | null;
-  inspection_technician_id: string | null;
-  last_op_date: string | null;
-  op_interval_months: number;
-  last_oz_date: string | null;
-  oz_interval_months: number;
-  last_ip_date: string | null;
-  ip_interval_years: number;
-};
-
 type FaultPriority = "bezna" | "dulezita" | "odstavka" | "uvizle_osoby";
-
 type FaultStatus =
   | "nova"
   | "prirazeno"
@@ -56,83 +16,80 @@ type FaultStatus =
   | "ceka_na_zakaznika"
   | "hotovo"
   | "archivovano";
+type ActionType = "servis" | "porucha" | "montaz" | "oprava" | "op" | "oz" | "ip" | "jine";
+type ActionStatus = "planovano" | "potvrzeno" | "na_ceste" | "rozpracovano" | "hotovo" | "zruseno";
+type ToolStatus = "sklad" | "vydano" | "oprava" | "vyrazeno";
+
+type Profile = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  active: boolean;
+  can_do_inspections: boolean;
+};
+
+type Elevator = {
+  id: string;
+  label: string;
+  address: string;
+  last_op_date: string | null;
+  op_interval_months: number;
+  last_oz_date: string | null;
+  oz_interval_months: number;
+  last_ip_date: string | null;
+  ip_interval_years: number;
+};
 
 type Fault = {
   id: string;
   elevator_id: string;
-  region_id: string | null;
   priority: FaultPriority;
   status: FaultStatus;
   description: string;
-  created_by: string | null;
   main_technician_id: string | null;
   created_at: string;
-  finished_at: string | null;
-  archived_at: string | null;
 };
 
-type FaultAssignee = {
+type PlannedAction = {
   id: string;
-  fault_id: string;
-  profile_id: string;
-  role: "hlavni" | "spolupracovnik";
-};
-
-type MessageTargetType = "all" | "role" | "profile" | "region";
-
-type Message = {
-  id: string;
-  created_by: string | null;
   title: string;
-  body: string;
-  target_type: MessageTargetType;
-  target_role: UserRole | null;
-  target_profile_id: string | null;
-  target_region_id: string | null;
-  created_at: string;
+  action_type: ActionType;
+  status: ActionStatus;
+  starts_at: string;
+  ends_at: string;
+  all_day: boolean;
+  address: string;
+  elevator_id: string | null;
 };
 
-type InspectionType = "op" | "oz" | "ip";
-
-type InspectionRow = {
-  elevator: Elevator;
-  type: InspectionType;
-  label: string;
-  lastDate: string | null;
-  nextDate: Date | null;
-  status: "ok" | "soon" | "overdue" | "missing";
-  intervalText: string;
+type PlannedActionAssignee = {
+  planned_action_id: string;
+  profile_id: string;
+  is_lead: boolean;
 };
 
-const roleLabels: Record<UserRole, string> = {
-  admin: "Admin",
-  vedouci_technik: "Vedoucí technik",
-  technik: "Technik",
-  sekretariat: "Sekretariát",
-  servis: "Servis",
+type Tool = {
+  id: string;
+  status: ToolStatus;
 };
 
-const priorityLabels: Record<FaultPriority, string> = {
-  bezna: "Běžná",
-  dulezita: "Důležitá",
-  odstavka: "Odstávka",
-  uvizle_osoby: "Uvízlé osoby",
-};
+type IconName =
+  | "calendar"
+  | "wrench"
+  | "alert"
+  | "users"
+  | "clipboard"
+  | "search"
+  | "bell"
+  | "help"
+  | "chevron-left"
+  | "chevron-right"
+  | "plus"
+  | "pin"
+  | "more";
 
-const statusLabels: Record<FaultStatus, string> = {
-  nova: "Nová",
-  prirazeno: "Přiřazeno",
-  na_ceste: "Na cestě",
-  rozpracovano: "Rozpracováno",
-  ceka_na_dil: "Čeká na díl",
-  ceka_na_spravce: "Čeká na správce",
-  ceka_na_pristup: "Čeká na přístup",
-  ceka_na_zakaznika: "Čeká na zákazníka",
-  hotovo: "Hotovo",
-  archivovano: "Archivováno",
-};
-
-const activeFaultStatuses: FaultStatus[] = [
+const openFaultStatuses: FaultStatus[] = [
   "nova",
   "prirazeno",
   "na_ceste",
@@ -143,1222 +100,714 @@ const activeFaultStatuses: FaultStatus[] = [
   "ceka_na_zakaznika",
 ];
 
-const inspectionLabels: Record<InspectionType, string> = {
-  op: "OP",
-  oz: "OZ",
-  ip: "IP",
+const actionLabels: Record<ActionType, string> = {
+  servis: "Servisní zásah",
+  porucha: "Porucha",
+  montaz: "Montáž",
+  oprava: "Oprava",
+  op: "Odborná prohlídka",
+  oz: "Odborná zkouška",
+  ip: "Inspekční prohlídka",
+  jine: "Plánovaná akce",
 };
+
+const actionColors: Record<ActionType, string> = {
+  servis: "#3478f6",
+  porucha: "#e64a4a",
+  montaz: "#8a5cf5",
+  oprava: "#f29c38",
+  op: "#12a85b",
+  oz: "#00a2a8",
+  ip: "#7d8793",
+  jine: "#7d8793",
+};
+
+const monthNames = [
+  "Leden",
+  "Únor",
+  "Březen",
+  "Duben",
+  "Květen",
+  "Červen",
+  "Červenec",
+  "Srpen",
+  "Září",
+  "Říjen",
+  "Listopad",
+  "Prosinec",
+];
+
+const weekdayShort = ["PO", "ÚT", "ST", "ČT", "PÁ", "SO", "NE"];
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function endOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+}
+
+function startOfWeek(date: Date) {
+  const day = date.getDay() || 7;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() - day + 1);
+}
+
+function addDays(date: Date, days: number) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+function addMonths(date: Date, months: number) {
+  const copy = new Date(date);
+  copy.setMonth(copy.getMonth() + months);
+  return copy;
+}
+
+function addYears(date: Date, years: number) {
+  const copy = new Date(date);
+  copy.setFullYear(copy.getFullYear() + years);
+  return copy;
+}
+
+function sameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function dateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function capitalise(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "U";
+  return parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("");
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+}
+
+function parseDate(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [regions, setRegions] = useState<Region[]>([]);
-  const [profileRegions, setProfileRegions] = useState<ProfileRegion[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
   const [faults, setFaults] = useState<Fault[]>([]);
-  const [faultAssignees, setFaultAssignees] = useState<FaultAssignee[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-
+  const [actions, setActions] = useState<PlannedAction[]>([]);
+  const [assignees, setAssignees] = useState<PlannedActionAssignee[]>([]);
+  const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-
-  const isAdminOrLead =
-    profile?.role === "admin" || profile?.role === "vedouci_technik";
+  const [error, setError] = useState("");
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()));
 
   useEffect(() => {
-    loadDashboard();
+    void loadDashboard();
   }, []);
 
   async function loadDashboard() {
     setLoading(true);
-    setMessage("");
-
+    setError("");
     const supabase = createClient();
+    const { data: authData, error: authError } = await supabase.auth.getUser();
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
+    if (authError || !authData.user) {
       window.location.href = "/login";
       return;
     }
 
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select(
-        "id, email, full_name, role, primary_region_id, can_do_inspections, active"
-      )
-      .eq("id", user.id)
-      .maybeSingle();
+    const [profileResult, profilesResult, elevatorsResult, faultsResult, actionsResult, assigneesResult, toolsResult] =
+      await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id,email,full_name,role,active,can_do_inspections")
+          .eq("id", authData.user.id)
+          .maybeSingle(),
+        supabase
+          .from("profiles")
+          .select("id,email,full_name,role,active,can_do_inspections")
+          .eq("active", true)
+          .order("full_name", { ascending: true }),
+        supabase
+          .from("elevators")
+          .select("id,label,address,last_op_date,op_interval_months,last_oz_date,oz_interval_months,last_ip_date,ip_interval_years")
+          .order("address", { ascending: true }),
+        supabase
+          .from("faults")
+          .select("id,elevator_id,priority,status,description,main_technician_id,created_at")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("planned_actions")
+          .select("id,title,action_type,status,starts_at,ends_at,all_day,address,elevator_id")
+          .neq("status", "zruseno")
+          .order("starts_at", { ascending: true }),
+        supabase
+          .from("planned_action_assignees")
+          .select("planned_action_id,profile_id,is_lead"),
+        supabase.from("tools").select("id,status"),
+      ]);
 
-    if (profileError) {
-      setMessage(`Chyba při načítání profilu: ${profileError.message}`);
-      setLoading(false);
-      return;
-    }
-
-    if (!profileData) {
-      setMessage("Profil pro přihlášeného uživatele nebyl nalezen.");
-      setLoading(false);
-      return;
-    }
-
-    const [
-      profilesResult,
-      regionsResult,
-      profileRegionsResult,
-      elevatorsResult,
-      faultsResult,
-      assigneesResult,
-      messagesResult,
-    ] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select(
-          "id, email, full_name, role, primary_region_id, can_do_inspections, active"
-        )
-        .order("full_name", { ascending: true }),
-
-      supabase.from("regions").select("id, name").order("name", { ascending: true }),
-
-      supabase.from("profile_regions").select("id, profile_id, region_id"),
-
-      supabase
-        .from("elevators")
-        .select(
-          "id, label, address, region_id, serial_number, pr_number, pl_number, inspection_technician_id, last_op_date, op_interval_months, last_oz_date, oz_interval_months, last_ip_date, ip_interval_years"
-        )
-        .order("address", { ascending: true }),
-
-      supabase
-        .from("faults")
-        .select(
-          "id, elevator_id, region_id, priority, status, description, created_by, main_technician_id, created_at, finished_at, archived_at"
-        )
-        .order("created_at", { ascending: false }),
-
-      supabase.from("fault_assignees").select("id, fault_id, profile_id, role"),
-
-      supabase
-        .from("messages")
-        .select(
-          "id, created_by, title, body, target_type, target_role, target_profile_id, target_region_id, created_at"
-        )
-        .order("created_at", { ascending: false }),
-    ]);
-
-    const error =
+    const firstError =
+      profileResult.error ||
       profilesResult.error ||
-      regionsResult.error ||
-      profileRegionsResult.error ||
       elevatorsResult.error ||
       faultsResult.error ||
+      actionsResult.error ||
       assigneesResult.error ||
-      messagesResult.error;
+      toolsResult.error;
 
-    if (error) {
-      setMessage(`Chyba při načítání dashboardu: ${error.message}`);
+    if (firstError) {
+      setError(`Dashboard se nepodařilo načíst: ${firstError.message}`);
       setLoading(false);
       return;
     }
 
-    setProfile(profileData as Profile);
+    if (!profileResult.data) {
+      setError("Profil přihlášeného uživatele nebyl nalezen.");
+      setLoading(false);
+      return;
+    }
+
+    setProfile(profileResult.data as Profile);
     setProfiles((profilesResult.data ?? []) as Profile[]);
-    setRegions((regionsResult.data ?? []) as Region[]);
-    setProfileRegions((profileRegionsResult.data ?? []) as ProfileRegion[]);
     setElevators((elevatorsResult.data ?? []) as Elevator[]);
     setFaults((faultsResult.data ?? []) as Fault[]);
-    setFaultAssignees((assigneesResult.data ?? []) as FaultAssignee[]);
-    setMessages((messagesResult.data ?? []) as Message[]);
-
+    setActions((actionsResult.data ?? []) as PlannedAction[]);
+    setAssignees((assigneesResult.data ?? []) as PlannedActionAssignee[]);
+    setTools((toolsResult.data ?? []) as Tool[]);
     setLoading(false);
   }
 
-  async function handleLogout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    window.location.href = "/login";
-  }
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const todayEnd = endOfDay(now);
+  const weekStart = startOfWeek(now);
+  const weekEnd = addDays(weekStart, 7);
 
-  function getRegionName(regionId: string | null) {
-    if (!regionId) return "Bez rajonu";
-    return regions.find((region) => region.id === regionId)?.name ?? "Neznámý rajon";
-  }
+  const openFaults = useMemo(
+    () => faults.filter((fault) => openFaultStatuses.includes(fault.status)),
+    [faults]
+  );
 
-  function getProfileName(profileId: string | null) {
-    if (!profileId) return "Nepřiřazen";
-    return profiles.find((item) => item.id === profileId)?.full_name ?? "Neznámý technik";
-  }
+  const todayActions = useMemo(
+    () => actions.filter((action) => {
+      const start = new Date(action.starts_at);
+      return start >= todayStart && start < todayEnd;
+    }),
+    [actions, todayStart.getTime(), todayEnd.getTime()]
+  );
 
-  function getElevator(elevatorId: string) {
-    return elevators.find((item) => item.id === elevatorId) ?? null;
-  }
+  const weekActions = useMemo(
+    () => actions.filter((action) => {
+      const start = new Date(action.starts_at);
+      return start >= weekStart && start < weekEnd;
+    }),
+    [actions, weekStart.getTime(), weekEnd.getTime()]
+  );
 
-  function getElevatorLabel(elevatorId: string) {
-    const elevator = getElevator(elevatorId);
-    if (!elevator) return "Neznámý výtah";
-    return `${elevator.address} — ${elevator.label}`;
-  }
-
-  function getUserRegionIds() {
-    if (!profile) return [];
-
-    const secondary = profileRegions
-      .filter((item) => item.profile_id === profile.id)
-      .map((item) => item.region_id);
-
-    return [profile.primary_region_id, ...secondary].filter(Boolean) as string[];
-  }
-
-  function isFaultAssignedToMe(fault: Fault) {
-    if (!profile) return false;
-
-    if (fault.main_technician_id === profile.id) return true;
-
-    return faultAssignees.some(
-      (item) =>
-        item.fault_id === fault.id &&
-        item.profile_id === profile.id &&
-        item.role === "spolupracovnik"
+  const assignedTodayIds = useMemo(() => {
+    const todayActionIds = new Set(todayActions.map((action) => action.id));
+    return new Set(
+      assignees
+        .filter((item) => todayActionIds.has(item.planned_action_id))
+        .map((item) => item.profile_id)
     );
-  }
+  }, [todayActions, assignees]);
 
-  function isFaultVisibleForUser(fault: Fault) {
-    if (!profile) return false;
-    if (isAdminOrLead) return true;
-    if (isFaultAssignedToMe(fault)) return true;
+  const inspectionsThisWeek = useMemo(() => {
+    let count = 0;
 
-    const userRegionIds = getUserRegionIds();
-    return fault.region_id ? userRegionIds.includes(fault.region_id) : false;
-  }
+    for (const elevator of elevators) {
+      const opDate = parseDate(elevator.last_op_date);
+      const ozDate = parseDate(elevator.last_oz_date);
+      const ipDate = parseDate(elevator.last_ip_date);
+      const nextDates = [
+        opDate ? addMonths(opDate, elevator.op_interval_months) : null,
+        ozDate ? addMonths(ozDate, elevator.oz_interval_months) : null,
+        ipDate ? addYears(ipDate, elevator.ip_interval_years) : null,
+      ];
 
-  function isMessageRelevant(item: Message) {
-    if (!profile) return false;
-    if (isAdminOrLead) return true;
-
-    if (item.target_type === "all") return true;
-
-    if (item.target_type === "role") {
-      return item.target_role === profile.role;
+      for (const nextDate of nextDates) {
+        if (nextDate && nextDate >= weekStart && nextDate < weekEnd) count += 1;
+      }
     }
 
-    if (item.target_type === "profile") {
-      return item.target_profile_id === profile.id;
+    return count;
+  }, [elevators, weekStart.getTime(), weekEnd.getTime()]);
+
+  const calendarDays = useMemo(() => {
+    const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const firstDay = first.getDay() || 7;
+    const gridStart = addDays(first, -(firstDay - 1));
+    return Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
+  }, [calendarMonth]);
+
+  const actionsByDay = useMemo(() => {
+    const map = new Map<string, PlannedAction[]>();
+    for (const action of actions) {
+      const key = dateKey(new Date(action.starts_at));
+      const list = map.get(key) ?? [];
+      list.push(action);
+      map.set(key, list);
     }
+    return map;
+  }, [actions]);
 
-    if (item.target_type === "region") {
-      if (!item.target_region_id) return false;
-      return getUserRegionIds().includes(item.target_region_id);
-    }
+  const selectedActions = useMemo(
+    () => [...(actionsByDay.get(dateKey(selectedDate)) ?? [])].sort(
+      (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+    ),
+    [actionsByDay, selectedDate]
+  );
 
-    return false;
+  const availableTools = tools.filter((tool) => tool.status === "sklad").length;
+  const toolsOnJobs = tools.filter((tool) => tool.status === "vydano").length;
+  const toolsNeedAttention = tools.filter((tool) => tool.status === "oprava").length;
+
+  function getElevator(action: PlannedAction) {
+    return elevators.find((elevator) => elevator.id === action.elevator_id) ?? null;
   }
 
-  function addMonths(date: Date, months: number) {
-    const result = new Date(date);
-    result.setMonth(result.getMonth() + months);
-    return result;
+  function getActionAssignees(actionId: string) {
+    const profileIds = assignees
+      .filter((item) => item.planned_action_id === actionId)
+      .sort((a, b) => Number(b.is_lead) - Number(a.is_lead))
+      .map((item) => item.profile_id);
+
+    return profileIds
+      .map((id) => profiles.find((item) => item.id === id)?.full_name)
+      .filter((value): value is string => Boolean(value));
   }
 
-  function addYears(date: Date, years: number) {
-    const result = new Date(date);
-    result.setFullYear(result.getFullYear() + years);
-    return result;
-  }
-
-  function parseDate(value: string | null) {
-    if (!value) return null;
-    const date = new Date(`${value}T00:00:00`);
-    if (Number.isNaN(date.getTime())) return null;
-    return date;
-  }
-
-  function formatDate(date: Date | null) {
-    if (!date) return "—";
-    return date.toLocaleDateString("cs-CZ");
-  }
-
-  function getInspectionStatus(nextDate: Date | null): InspectionRow["status"] {
-    if (!nextDate) return "missing";
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const soonLimit = new Date(today);
-    soonLimit.setDate(soonLimit.getDate() + 30);
-
-    if (nextDate < today) return "overdue";
-    if (nextDate <= soonLimit) return "soon";
-    return "ok";
-  }
-
-  function buildInspectionRows(elevator: Elevator): InspectionRow[] {
-    const lastOp = parseDate(elevator.last_op_date);
-    const nextOp = lastOp ? addMonths(lastOp, elevator.op_interval_months || 3) : null;
-
-    const lastOz = parseDate(elevator.last_oz_date);
-    const nextOz = lastOz ? addMonths(lastOz, elevator.oz_interval_months || 36) : null;
-
-    const lastIp = parseDate(elevator.last_ip_date);
-    const nextIp = lastIp ? addYears(lastIp, elevator.ip_interval_years || 6) : null;
-
-    return [
-      {
-        elevator,
-        type: "op",
-        label: "OP",
-        lastDate: elevator.last_op_date,
-        nextDate: nextOp,
-        status: getInspectionStatus(nextOp),
-        intervalText: `${elevator.op_interval_months || 3} měs.`,
-      },
-      {
-        elevator,
-        type: "oz",
-        label: "OZ",
-        lastDate: elevator.last_oz_date,
-        nextDate: nextOz,
-        status: getInspectionStatus(nextOz),
-        intervalText: `${elevator.oz_interval_months || 36} měs.`,
-      },
-      {
-        elevator,
-        type: "ip",
-        label: "IP",
-        lastDate: elevator.last_ip_date,
-        nextDate: nextIp,
-        status: getInspectionStatus(nextIp),
-        intervalText: `${elevator.ip_interval_years || 6} let`,
-      },
-    ];
-  }
-
-  const activeFaults = useMemo(() => {
-    return faults.filter((fault) => activeFaultStatuses.includes(fault.status));
-  }, [faults]);
-
-  const visibleActiveFaults = useMemo(() => {
-    return activeFaults.filter((fault) => isFaultVisibleForUser(fault));
-  }, [activeFaults, profile, faultAssignees, profileRegions]);
-
-  const myWorkFaults = useMemo(() => {
-    return activeFaults.filter((fault) => isFaultAssignedToMe(fault)).slice(0, 5);
-  }, [activeFaults, profile, faultAssignees]);
-
-  const trappedFaults = useMemo(() => {
-    return visibleActiveFaults
-      .filter((fault) => fault.priority === "uvizle_osoby")
-      .slice(0, 4);
-  }, [visibleActiveFaults]);
-
-  const currentFaults = useMemo(() => {
-    return visibleActiveFaults
-      .filter((fault) => fault.priority !== "uvizle_osoby")
-      .slice(0, 5);
-  }, [visibleActiveFaults]);
-
-  const messagesForMe = useMemo(() => {
-    return messages.filter((item) => isMessageRelevant(item)).slice(0, 4);
-  }, [messages, profile, profileRegions]);
-
-  const visibleElevators = useMemo(() => {
-    if (!profile) return [];
-
-    if (isAdminOrLead) return elevators;
-
-    const regionIds = getUserRegionIds();
-    return elevators.filter((elevator) =>
-      elevator.region_id ? regionIds.includes(elevator.region_id) : false
+  function technicianStatus(technician: Profile) {
+    const assigned = todayActions.find((action) =>
+      assignees.some(
+        (item) => item.planned_action_id === action.id && item.profile_id === technician.id
+      )
     );
-  }, [elevators, profile, profileRegions]);
 
-  const inspectionRows = useMemo(() => {
-    if (!profile) return [];
+    if (!assigned) return { label: "V kanceláři", tone: "office" };
+    if (assigned.status === "na_ceste") return { label: "Na cestě", tone: "travel" };
+    return { label: "V terénu", tone: "field" };
+  }
 
-    const allowedElevators =
-      isAdminOrLead || profile.can_do_inspections
-        ? visibleElevators.filter((elevator) => {
-            if (isAdminOrLead) return true;
-            if (elevator.inspection_technician_id === profile.id) return true;
-            return true;
-          })
-        : [];
-
-    return allowedElevators
-      .flatMap((elevator) => buildInspectionRows(elevator))
-      .filter((row) => row.status === "overdue" || row.status === "soon")
-      .sort((a, b) => {
-        const order: Record<InspectionRow["status"], number> = {
-          overdue: 0,
-          soon: 1,
-          missing: 2,
-          ok: 3,
-        };
-
-        const statusDiff = order[a.status] - order[b.status];
-        if (statusDiff !== 0) return statusDiff;
-
-        const aTime = a.nextDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
-        const bTime = b.nextDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
-
-        return aTime - bTime;
-      })
-      .slice(0, 5);
-  }, [visibleElevators, profile, isAdminOrLead]);
-
-  const faultsThisMonth = useMemo(() => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-
-    return faults.filter((fault) => {
-      const created = new Date(fault.created_at);
-      return created >= start && created < end;
-    }).length;
-  }, [faults]);
-
-  const activeRegionsCount = regions.length;
-  const activeTechniciansCount = profiles.filter((item) => item.active).length;
+  function goToToday() {
+    const today = startOfDay(new Date());
+    setCalendarMonth(today);
+    setSelectedDate(today);
+  }
 
   if (loading) {
     return (
-      <main className="page-shell">
-        <p>Načítám dashboard...</p>
-        <StyleBlock />
+      <main className="dashboard-shell">
+        <div className="vd-loading">Načítám přehled…</div>
+        <DashboardStyles />
       </main>
     );
   }
 
-  return (
-    <main className="app-layout">
-      <StyleBlock />
-
-      <aside className="sidebar">
-        <div className="brand-card">
-          <div className="brand-kicker">SERVISNÍ SYSTÉM</div>
-          <div className="brand-title">Výtahy Servis</div>
-          <div className="brand-subtitle">Databáze, poruchy, servis a revize</div>
-        </div>
-
-        <div className="side-label">PŘIHLÁŠENÝ UŽIVATEL</div>
-
-        <div className="user-select">
-          {profile ? profile.full_name : "Nepřihlášen"} —{" "}
-          {profile ? roleLabels[profile.role] : ""}
-        </div>
-
-        <nav className="nav">
-          <NavLink active href="/dashboard" label="Hlavní stránka" />
-          <NavLink href="/faults" label="Poruchy" />
-          <NavLink href="/messages" label="Zprávy" />
-          <NavLink href="/service" label="Servis" />
-          <NavLink href="/elevators" label="Výtahy" />
-          <NavLink href="/technicians" label="Technici" />
-          <NavLink href="/inspections" label="Revize" />
-          <NavLink href="/regions" label="Rajony" />
-        </nav>
-
-        {profile && (
-          <div className="profile-card">
-            <strong>{profile.full_name}</strong>
-            <span>{roleLabels[profile.role]}</span>
-            <span>
-              Rajon:{" "}
-              {profile.primary_region_id
-                ? getRegionName(profile.primary_region_id)
-                : "Bez rajonu"}
-            </span>
-            <span>Revize: {profile.can_do_inspections ? "Ano" : "Ne"}</span>
-          </div>
-        )}
-
-        <a href="/faults" className="sidebar-fault-button">
-          + Založit poruchu
-        </a>
-
-        <div className="sidebar-spacer" />
-
-        <button onClick={handleLogout} className="logout-button">
-          Odhlásit
-        </button>
-      </aside>
-
-      <section className="content">
-        <header className="topbar">
-          <div>
-            <h1>Hlavní stránka</h1>
-            <p>Moje práce, urgentní poruchy, zprávy a blížící se revize.</p>
-          </div>
-        </header>
-
-        {message && <div className="error-box">{message}</div>}
-
-        <section className="grid-main">
-          <Card className="my-work-card">
-            <CardHeader
-              title="Moje práce"
-              subtitle="Hlavní technik i spolupracovník"
-            />
-
-            {myWorkFaults.length === 0 ? (
-              <EmptyBox text="Nemáš přiřazenou žádnou aktivní poruchu." />
-            ) : (
-              <div className="list">
-                {myWorkFaults.map((fault) => (
-                  <FaultMiniCard key={fault.id} fault={fault} />
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card>
-            <CardHeader title="Zprávy pro mě" subtitle="Poslední relevantní zprávy" />
-
-            {messagesForMe.length === 0 ? (
-              <EmptyBox text="Nemáš žádné nové zprávy." />
-            ) : (
-              <div className="list">
-                {messagesForMe.map((item) => (
-                  <a href="/messages" className="message-card" key={item.id}>
-                    <div className="date-text">
-                      {new Date(item.created_at).toLocaleDateString("cs-CZ")}
-                    </div>
-                    <strong>{item.title}</strong>
-                    <p>{item.body}</p>
-                  </a>
-                ))}
-              </div>
-            )}
-          </Card>
-        </section>
-
-        <Card className="urgent-card">
-          <CardHeader title="Uvízlé osoby" subtitle="Vždy nahoře a výrazně červeně" />
-
-          {trappedFaults.length === 0 ? (
-            <EmptyBox text="Aktuálně nejsou hlášeny uvízlé osoby." />
-          ) : (
-            <div className="list">
-              {trappedFaults.map((fault) => (
-                <FaultMiniCard key={fault.id} fault={fault} urgent />
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <section className="grid-main">
-          <Card>
-            <CardHeader title="Aktuální poruchy" subtitle="Aktivní poruchy podle práv a rajonů" />
-
-            {currentFaults.length === 0 ? (
-              <EmptyBox text="Aktuálně tu nejsou žádné běžné aktivní poruchy." />
-            ) : (
-              <div className="list">
-                {currentFaults.map((fault) => (
-                  <FaultMiniCard key={fault.id} fault={fault} />
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card>
-            <CardHeader title="Revize, zkoušky a IP" subtitle="Po termínu nebo do 30 dnů" />
-
-            {inspectionRows.length === 0 ? (
-              <EmptyBox text="Nemáš žádné blížící se nebo prošlé OP/OZ/IP." />
-            ) : (
-              <div className="list">
-                {inspectionRows.map((row) => (
-                  <a
-                    href="/inspections"
-                    key={`${row.elevator.id}-${row.type}`}
-                    className="inspection-card"
-                  >
-                    <div className="inspection-line">
-                      <span className="pill dark">{inspectionLabels[row.type]}</span>
-                      <span className={row.status === "overdue" ? "pill red" : "pill amber"}>
-                        {row.status === "overdue" ? "Po termínu" : "Blíží se"}
-                      </span>
-                    </div>
-
-                    <strong>
-                      {row.elevator.address} — {row.elevator.label}
-                    </strong>
-
-                    <p>
-                      Poslední:{" "}
-                      {row.lastDate
-                        ? new Date(`${row.lastDate}T00:00:00`).toLocaleDateString(
-                            "cs-CZ"
-                          )
-                        : "—"}{" "}
-                      · Interval: {row.intervalText} · Další:{" "}
-                      {formatDate(row.nextDate)}
-                    </p>
-                  </a>
-                ))}
-              </div>
-            )}
-          </Card>
-        </section>
-
-        <section className="stats-grid">
-          <StatCard label="Výtahy" value={elevators.length} href="/elevators" />
-          <StatCard label="Aktivní poruchy" value={activeFaults.length} href="/faults" />
-          <StatCard label="Poruchy tento měsíc" value={faultsThisMonth} href="/faults" />
-          <StatCard label="Aktivní technici" value={activeTechniciansCount} href="/technicians" />
-          <StatCard label="Rajony" value={activeRegionsCount} href="/regions" />
-        </section>
-      </section>
-    </main>
+  const greetingName = profile?.full_name?.split(" ")[0] || "uživateli";
+  const fullToday = capitalise(
+    now.toLocaleDateString("cs-CZ", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    })
   );
 
-  function FaultMiniCard({ fault, urgent }: { fault: Fault; urgent?: boolean }) {
-    const helpers = faultAssignees
-      .filter((item) => item.fault_id === fault.id && item.role === "spolupracovnik")
-      .map((item) => getProfileName(item.profile_id));
+  return (
+    <main className="dashboard-shell">
+      <DashboardStyles />
 
-    return (
-      <a href="/faults" className={urgent ? "fault-card urgent" : "fault-card"}>
-        <div className="fault-tags">
-          <span className={urgent ? "pill red" : "pill amber"}>
-            {priorityLabels[fault.priority]}
-          </span>
-          <span className="pill blue">{statusLabels[fault.status]}</span>
+      <header className="vd-topbar">
+        <div className="vd-greeting">
+          <h1>Dobrý den, {greetingName}</h1>
+          <p>{fullToday}</p>
         </div>
 
-        <strong>{getElevatorLabel(fault.elevator_id)}</strong>
-
-        <p>{fault.description}</p>
-
-        <div className="meta-text">
-          Hlavní: {getProfileName(fault.main_technician_id)}
-          {helpers.length > 0 ? ` · Spolu: ${helpers.join(", ")}` : ""}
+        <div className="vd-topbar-actions">
+          <label className="vd-search">
+            <Icon name="search" size={18} />
+            <input aria-label="Hledat" placeholder="Hledat…" />
+            <span>Ctrl + K</span>
+          </label>
+          <button className="vd-icon-button vd-notification" aria-label="Upozornění">
+            <Icon name="bell" size={19} />
+            {openFaults.length > 0 && <b>{Math.min(openFaults.length, 9)}</b>}
+          </button>
+          <button className="vd-icon-button" aria-label="Nápověda">
+            <Icon name="help" size={19} />
+          </button>
+          <div className="vd-avatar" title={profile?.full_name ?? "Uživatel"}>
+            {initials(profile?.full_name ?? "U")}
+            <span />
+          </div>
         </div>
-      </a>
-    );
-  }
+      </header>
+
+      <div className="vd-page">
+        {error && <div className="vd-error">{error}</div>}
+
+        <section className="vd-stats">
+          <SummaryCard icon="calendar" tone="green" title="Dnes" value={todayActions.length} subtitle="naplánované akce" />
+          <SummaryCard icon="wrench" tone="blue" title="Tento týden" value={weekActions.length} subtitle="naplánovaných akcí" />
+          <SummaryCard icon="alert" tone="red" title="Poruchy" value={openFaults.length} subtitle="otevřené" />
+          <SummaryCard icon="users" tone="purple" title="Technici" value={assignedTodayIds.size} subtitle="v terénu" />
+          <SummaryCard icon="clipboard" tone="amber" title="Prohlídky" value={inspectionsThisWeek} subtitle="v tomto týdnu" />
+        </section>
+
+        <section className="vd-dashboard-grid">
+          <section className="vd-panel vd-calendar-panel">
+            <div className="vd-panel-header vd-calendar-header">
+              <div>
+                <h2>Kalendář</h2>
+                <div className="vd-month-controls">
+                  <button onClick={() => setCalendarMonth(addMonths(calendarMonth, -1))} aria-label="Předchozí měsíc">
+                    <Icon name="chevron-left" size={18} />
+                  </button>
+                  <button className="vd-today-button" onClick={goToToday}>Dnes</button>
+                  <button onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))} aria-label="Další měsíc">
+                    <Icon name="chevron-right" size={18} />
+                  </button>
+                  <strong>{monthNames[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}</strong>
+                </div>
+              </div>
+
+              <div className="vd-calendar-actions">
+                <div className="vd-view-switch">
+                  <button className="active">Měsíc</button>
+                  <button>Týden</button>
+                  <button>Den</button>
+                </div>
+                <a className="vd-primary-button" href="/planned-actions">
+                  <Icon name="plus" size={17} /> Nová akce
+                </a>
+              </div>
+            </div>
+
+            <div className="vd-calendar">
+              {weekdayShort.map((day) => <div className="vd-weekday" key={day}>{day}</div>)}
+              {calendarDays.map((day) => {
+                const dayActions = actionsByDay.get(dateKey(day)) ?? [];
+                const outside = day.getMonth() !== calendarMonth.getMonth();
+                const selected = sameDay(day, selectedDate);
+                const today = sameDay(day, now);
+
+                return (
+                  <button
+                    type="button"
+                    className={`vd-day ${outside ? "outside" : ""} ${selected ? "selected" : ""} ${today ? "today" : ""}`}
+                    key={dateKey(day)}
+                    onClick={() => setSelectedDate(startOfDay(day))}
+                  >
+                    <span className="vd-day-number">{day.getDate()}</span>
+                    <span className="vd-day-dots">
+                      {dayActions.slice(0, 4).map((action) => (
+                        <i key={action.id} style={{ background: actionColors[action.action_type] }} />
+                      ))}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="vd-agenda">
+              <div className="vd-agenda-title">
+                <h3>{capitalise(selectedDate.toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long", year: "numeric" }))}</h3>
+                <span>{selectedActions.length} {selectedActions.length === 1 ? "akce" : "akcí"}</span>
+              </div>
+
+              {selectedActions.length === 0 ? (
+                <div className="vd-empty">Pro tento den nejsou naplánované žádné akce.</div>
+              ) : (
+                <div className="vd-agenda-list">
+                  {selectedActions.map((action) => {
+                    const elevator = getElevator(action);
+                    const names = getActionAssignees(action.id);
+                    const navigationAddress = action.address || elevator?.address || "";
+                    return (
+                      <article className="vd-agenda-row" key={action.id}>
+                        <i className="vd-agenda-dot" style={{ background: actionColors[action.action_type] }} />
+                        <div className="vd-agenda-time">
+                          {action.all_day ? "Celý den" : `${formatTime(action.starts_at)} – ${formatTime(action.ends_at)}`}
+                        </div>
+                        <div className="vd-agenda-main">
+                          <strong>{action.title || actionLabels[action.action_type]}</strong>
+                          <span>{navigationAddress || "Bez uvedené adresy"}</span>
+                        </div>
+                        <div className="vd-agenda-people">
+                          <Icon name="users" size={16} />
+                          <span>{names.length > 0 ? names.join(", ") : "Nepřiřazeno"}</span>
+                        </div>
+                        <div className="vd-agenda-elevator">{elevator?.label ?? "—"}</div>
+                        {navigationAddress ? (
+                          <a
+                            className="vd-navigate"
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationAddress)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <Icon name="pin" size={16} /> Navigovat
+                          </a>
+                        ) : <span />}
+                        <button className="vd-more" aria-label="Další možnosti"><Icon name="more" size={18} /></button>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+
+              <a className="vd-show-all" href="/planned-actions">Zobrazit všechny akce dne</a>
+            </div>
+          </section>
+
+          <aside className="vd-right-column">
+            <section className="vd-panel vd-side-panel">
+              <div className="vd-panel-header">
+                <h2>Dnešní technici</h2>
+                <a href="/technicians">Všichni</a>
+              </div>
+              <div className="vd-technicians">
+                {profiles.slice(0, 5).map((technician) => {
+                  const status = technicianStatus(technician);
+                  return (
+                    <div className="vd-technician" key={technician.id}>
+                      <div className="vd-technician-avatar">{initials(technician.full_name)}</div>
+                      <div>
+                        <strong>{technician.full_name}</strong>
+                        <span>{technician.role === "technik" ? "Technik" : "Servis"}</span>
+                      </div>
+                      <b className={`vd-status ${status.tone}`}>{status.label}</b>
+                    </div>
+                  );
+                })}
+              </div>
+              <a className="vd-secondary-button" href="/technicians">Zobrazit všechny</a>
+            </section>
+
+            <section className="vd-panel vd-side-panel">
+              <div className="vd-panel-header"><h2>Rychlé akce</h2></div>
+              <div className="vd-quick-actions">
+                <QuickAction href="/faults" icon="alert" tone="red" label="Nová porucha" />
+                <QuickAction href="/service" icon="wrench" tone="blue" label="Nový servisní zásah" />
+                <QuickAction href="/inspections" icon="clipboard" tone="green" label="Odborná prohlídka / zkouška" />
+                <QuickAction href="/planned-actions" icon="calendar" tone="purple" label="Plánovaná akce" />
+              </div>
+            </section>
+
+            <section className="vd-panel vd-side-panel">
+              <div className="vd-panel-header"><h2>Nářadí – rychlý přehled</h2></div>
+              <div className="vd-tools-overview">
+                <ToolLine label="Právě na akcích" value={`${toolsOnJobs} ks`} />
+                <ToolLine label="Dostupné" value={`${availableTools} ks`} />
+                <ToolLine label="Potřebuje kontrolu" value={`${toolsNeedAttention} ks`} attention />
+              </div>
+              <a className="vd-secondary-button" href="/tools">Přejít na evidenci nářadí</a>
+            </section>
+          </aside>
+        </section>
+      </div>
+    </main>
+  );
 }
 
-function NavLink({
-  href,
-  label,
-  active,
+function SummaryCard({
+  icon,
+  tone,
+  title,
+  value,
+  subtitle,
 }: {
-  href: string;
-  label: string;
-  active?: boolean;
+  icon: IconName;
+  tone: "green" | "blue" | "red" | "purple" | "amber";
+  title: string;
+  value: number;
+  subtitle: string;
 }) {
   return (
-    <a className={active ? "nav-link active" : "nav-link"} href={href}>
-      {label}
+    <article className="vd-summary-card">
+      <span className={`vd-summary-icon ${tone}`}><Icon name={icon} size={20} /></span>
+      <div>
+        <span>{title}</span>
+        <strong>{value}</strong>
+        <small>{subtitle}</small>
+      </div>
+    </article>
+  );
+}
+
+function QuickAction({ href, icon, tone, label }: { href: string; icon: IconName; tone: string; label: string }) {
+  return (
+    <a href={href}>
+      <span className={`vd-quick-icon ${tone}`}><Icon name={icon} size={18} /></span>
+      <strong>{label}</strong>
+      <Icon name="chevron-right" size={17} />
     </a>
   );
 }
 
-function Card({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <section className={className ? `card ${className}` : "card"}>{children}</section>;
-}
-
-function CardHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+function ToolLine({ label, value, attention }: { label: string; value: string; attention?: boolean }) {
   return (
-    <div className="card-header">
-      <h2>{title}</h2>
-      {subtitle && <p>{subtitle}</p>}
+    <div>
+      <span>{label}</span>
+      <strong className={attention ? "attention" : ""}>{value}</strong>
     </div>
   );
 }
 
-function EmptyBox({ text }: { text: string }) {
-  return <div className="empty-box">{text}</div>;
+function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+
+  const paths: Record<IconName, React.ReactNode> = {
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></>,
+    wrench: <><path d="M14.7 6.3a4 4 0 0 0-5-5l2.1 2.1-2.4 2.4-2.1-2.1a4 4 0 0 0 5 5L19 15.4a2.1 2.1 0 0 1-3 3l-6.7-6.7" /></>,
+    alert: <><path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
+    users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" /></>,
+    clipboard: <><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V2h6v2M9 11l2 2 4-4" /></>,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
+    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></>,
+    help: <><circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 1 1 5.8 1c0 2-3 2-3 4M12 18h.01" /></>,
+    "chevron-left": <path d="m15 18-6-6 6-6" />,
+    "chevron-right": <path d="m9 18 6-6-6-6" />,
+    plus: <path d="M12 5v14M5 12h14" />,
+    pin: <><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2" /></>,
+    more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
+  };
+
+  return <svg {...common}>{paths[name]}</svg>;
 }
 
-function StatCard({
-  label,
-  value,
-  href,
-}: {
-  label: string;
-  value: number;
-  href: string;
-}) {
-  return (
-    <a href={href} className="stat-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </a>
-  );
-}
-
-function StyleBlock() {
+function DashboardStyles() {
   return (
     <style>{`
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        background: #020617;
-      }
-
-      .page-shell {
-        min-height: 100vh;
-        background: #020617;
-        color: white;
-        padding: 40px;
-      }
-
-      .app-layout {
-        min-height: 100vh;
-        display: grid;
-        grid-template-columns: 280px 1fr;
-        background: #020617;
-        color: #f8fafc;
-      }
-
-      .sidebar {
-        background: #020617;
-        border-right: 1px solid #1e293b;
-        padding: 14px;
-        position: sticky;
-        top: 0;
-        height: 100vh;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .brand-card {
-        background: #0f172a;
-        border: 1px solid #1e293b;
-        border-radius: 18px;
-        padding: 18px;
-        margin-bottom: 18px;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
-      }
-
-      .brand-kicker {
-        color: #94a3b8;
-        font-size: 12px;
-        font-weight: 800;
-        letter-spacing: 0.05em;
-      }
-
-      .brand-title {
-        font-size: 23px;
-        font-weight: 950;
-        margin-top: 4px;
-      }
-
-      .brand-subtitle {
-        color: #94a3b8;
-        font-size: 13px;
-        margin-top: 12px;
-      }
-
-      .side-label {
-        color: #64748b;
-        font-size: 12px;
-        font-weight: 900;
-        margin: 14px 0 8px;
-      }
-
-      .user-select {
-        background: #0f172a;
-        border: 1px solid #334155;
-        border-radius: 12px;
-        padding: 12px;
-        color: #e2e8f0;
-        margin-bottom: 14px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .nav {
-        display: grid;
-        gap: 8px;
-      }
-
-      .nav-link {
-        display: block;
-        padding: 13px 14px;
-        border-radius: 13px;
-        color: #cbd5e1;
-        background: #0f172a;
-        border: 1px solid #1e293b;
-        text-decoration: none;
-        font-weight: 800;
-      }
-
-      .nav-link:hover {
-        border-color: #3b82f6;
-      }
-
-      .nav-link.active {
-        background: #2563eb;
-        color: white;
-        border-color: #60a5fa;
-      }
-
-      .profile-card {
-        margin-top: 16px;
-        background: #0f172a;
-        border: 1px solid #334155;
-        border-radius: 16px;
-        padding: 14px;
-        display: grid;
-        gap: 5px;
-        color: #94a3b8;
-        font-size: 13px;
-      }
-
-      .profile-card strong {
-        color: white;
-        font-size: 15px;
-      }
-
-      .sidebar-fault-button {
-        margin-top: 14px;
-        width: 100%;
-        min-height: 48px;
-        background: #dc2626;
-        color: white;
-        border-radius: 13px;
-        padding: 13px 14px;
-        font-weight: 950;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 14px 30px rgba(220, 38, 38, 0.25);
-      }
-
-      .sidebar-fault-button:hover {
-        background: #b91c1c;
-      }
-
-      .sidebar-spacer {
-        flex: 1;
-        min-height: 14px;
-      }
-
-      .logout-button {
-        width: 100%;
-        border: 0;
-        background: #7f1d1d;
-        color: #fecaca;
-        border-radius: 13px;
-        padding: 12px;
-        font-weight: 900;
-        cursor: pointer;
-      }
-
-      .content {
-        padding: 34px;
-        background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
-      }
-
-      .topbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 18px;
-        flex-wrap: wrap;
-        margin-bottom: 22px;
-      }
-
-      .topbar h1 {
-        margin: 0 0 6px;
-        font-size: 34px;
-        font-weight: 950;
-        letter-spacing: -0.04em;
-      }
-
-      .topbar p {
-        margin: 0;
-        color: #94a3b8;
-      }
-
-      .grid-main {
-        display: grid;
-        grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
-        gap: 18px;
-        margin-bottom: 18px;
-      }
-
-      .card {
-        background: #0f172a;
-        border: 1px solid #1e293b;
-        border-radius: 24px;
-        padding: 20px;
-        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.18);
-      }
-
-      .urgent-card {
-        margin-bottom: 18px;
-      }
-
-      .card-header {
-        margin-bottom: 14px;
-      }
-
-      .card-header h2 {
-        margin: 0 0 4px;
-        font-size: 22px;
-        font-weight: 950;
-      }
-
-      .card-header p {
-        margin: 0;
-        color: #94a3b8;
-        font-size: 14px;
-      }
-
-      .empty-box {
-        border: 1px dashed #334155;
-        background: #020617;
-        color: #94a3b8;
-        border-radius: 16px;
-        padding: 18px;
-      }
-
-      .list {
-        display: grid;
-        gap: 12px;
-      }
-
-      .fault-card,
-      .message-card,
-      .inspection-card {
-        display: block;
-        background: #020617;
-        border: 1px solid #334155;
-        border-radius: 16px;
-        padding: 16px;
-        color: white;
-        text-decoration: none;
-      }
-
-      .fault-card:hover,
-      .message-card:hover,
-      .inspection-card:hover {
-        border-color: #60a5fa;
-      }
-
-      .fault-card.urgent {
-        border-color: #ef4444;
-        background: #450a0a;
-      }
-
-      .fault-tags {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-bottom: 10px;
-      }
-
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        border-radius: 999px;
-        padding: 5px 10px;
-        font-size: 12px;
-        font-weight: 900;
-      }
-
-      .pill.red {
-        background: #7f1d1d;
-        color: #fecaca;
-        border: 1px solid #ef4444;
-      }
-
-      .pill.amber {
-        background: #451a03;
-        color: #fed7aa;
-        border: 1px solid #f97316;
-      }
-
-      .pill.blue {
-        background: #172554;
-        color: #bfdbfe;
-        border: 1px solid #3b82f6;
-      }
-
-      .pill.dark {
-        background: #020617;
-        color: #e2e8f0;
-        border: 1px solid #334155;
-      }
-
-      .fault-card strong,
-      .message-card strong,
-      .inspection-card strong {
-        font-size: 17px;
-      }
-
-      .fault-card p,
-      .message-card p,
-      .inspection-card p {
-        color: #cbd5e1;
-        margin: 8px 0 0;
-        line-height: 1.45;
-      }
-
-      .meta-text,
-      .date-text {
-        color: #94a3b8;
-        font-size: 13px;
-        margin-top: 8px;
-      }
-
-      .inspection-line {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-bottom: 10px;
-      }
-
-      .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 14px;
-        margin-top: 18px;
-      }
-
-      .stat-card {
-        background: #0f172a;
-        border: 1px solid #1e293b;
-        border-radius: 20px;
-        padding: 18px;
-        color: white;
-        text-decoration: none;
-      }
-
-      .stat-card span {
-        display: block;
-        color: #94a3b8;
-        font-size: 14px;
-        margin-bottom: 8px;
-      }
-
-      .stat-card strong {
-        display: block;
-        font-size: 34px;
-        font-weight: 950;
-      }
-
-      .error-box {
-        background: #450a0a;
-        border: 1px solid #7f1d1d;
-        color: #fecaca;
-        padding: 12px;
-        border-radius: 12px;
-        margin-bottom: 16px;
-      }
-
-    @media (max-width: 980px) {
-  .app-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: relative;
-    min-height: 100vh;
-    height: auto;
-    border-right: 0;
-    border-bottom: 1px solid #1e293b;
-  }
-
-  .sidebar-spacer {
-    display: block;
-    flex: 1;
-    min-height: 80px;
-  }
-
-  .content {
-    padding: 18px;
-  }
-
-  .grid-main {
-    grid-template-columns: 1fr;
-  }
-}
-
-      @media (max-width: 720px) {
-        .sidebar {
-          padding: 12px;
-        }
-
-        .brand-card {
-          padding: 14px;
-          margin-bottom: 12px;
-          border-radius: 16px;
-        }
-
-        .brand-title {
-          font-size: 20px;
-        }
-
-        .brand-subtitle {
-          margin-top: 8px;
-        }
-
-        .side-label {
-          margin-top: 8px;
-        }
-
-        .user-select {
-          white-space: normal;
-          line-height: 1.4;
-          padding: 11px;
-          margin-bottom: 12px;
-        }
-
-        .nav {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 8px;
-        }
-
-        .nav-link {
-          min-height: 48px;
-          padding: 12px 10px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-          font-size: 14px;
-        }
-
-        .profile-card {
-          margin-top: 12px;
-          grid-template-columns: 1fr;
-        }
-
-        .sidebar-fault-button,
-        .logout-button {
-          min-height: 48px;
-        }
-
-        .logout-button {
-          margin-top: 10px;
-        }
-
-        .content {
-          padding: 14px;
-        }
-
-        .topbar {
-          display: grid;
-          gap: 14px;
-          margin-bottom: 16px;
-        }
-
-        .topbar h1 {
-          font-size: 30px;
-          line-height: 1.05;
-        }
-
-        .topbar p {
-          font-size: 15px;
-          line-height: 1.45;
-        }
-
-        .grid-main {
-          gap: 14px;
-          margin-bottom: 14px;
-        }
-
-        .urgent-card {
-          margin-bottom: 14px;
-        }
-
-        .card {
-          padding: 16px;
-          border-radius: 20px;
-        }
-
-        .card-header h2 {
-          font-size: 20px;
-        }
-
-        .card-header p {
-          font-size: 13px;
-          line-height: 1.45;
-        }
-
-        .fault-card,
-        .message-card,
-        .inspection-card,
-        .empty-box {
-          padding: 14px;
-          border-radius: 15px;
-        }
-
-        .fault-card strong,
-        .message-card strong,
-        .inspection-card strong {
-          font-size: 16px;
-          line-height: 1.35;
-        }
-
-        .fault-card p,
-        .message-card p,
-        .inspection-card p {
-          font-size: 14px;
-        }
-
-        .pill {
-          font-size: 11px;
-          padding: 5px 9px;
-        }
-
-        .stats-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-          margin-top: 14px;
-        }
-
-        .stat-card {
-          padding: 14px;
-          border-radius: 17px;
-        }
-
-        .stat-card strong {
-          font-size: 28px;
-        }
-      }
-
-      @media (max-width: 430px) {
-        .nav {
-          grid-template-columns: 1fr;
-        }
-
-        .content {
-          padding: 12px;
-        }
-
-        .topbar h1 {
-          font-size: 28px;
-        }
-
-        .stats-grid {
-          grid-template-columns: 1fr;
-        }
-
-        .card {
-          padding: 14px;
-        }
-      }
+      .dashboard-shell { min-height: 100vh; background: #f4f7f9; color: #142433; }
+      .vd-loading { min-height: 100vh; display: grid; place-items: center; color: #637488; font-weight: 700; }
+      .vd-topbar { min-height: 92px; padding: 20px 30px; background: rgba(255,255,255,.96); border-bottom: 1px solid #e1e8ed; display: flex; align-items: center; justify-content: space-between; gap: 22px; position: sticky; top: 0; z-index: 30; backdrop-filter: blur(14px); }
+      .vd-greeting h1 { margin: 0; color: #102a43; font-size: 25px; line-height: 1.2; font-weight: 850; letter-spacing: -0.025em; }
+      .vd-greeting p { margin: 5px 0 0; color: #7b8999; font-size: 13px; }
+      .vd-topbar-actions { display: flex; align-items: center; gap: 10px; }
+      .vd-search { min-width: 300px; height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 10px 0 13px; border: 1px solid #dfe7ec; border-radius: 12px; background: #f8fafb; color: #8795a5; }
+      .vd-search input { min-width: 0; flex: 1; border: 0; outline: 0 !important; background: transparent; color: #1b2d3d; }
+      .vd-search span { padding: 4px 7px; border: 1px solid #d9e2e8; border-radius: 6px; background: white; font-size: 10px; color: #8a98a8; }
+      .vd-icon-button { width: 42px; height: 42px; display: grid; place-items: center; position: relative; border: 1px solid #dfe7ec; border-radius: 12px; background: white; color: #536779; cursor: pointer; }
+      .vd-notification b { position: absolute; right: -4px; top: -5px; width: 18px; height: 18px; display: grid; place-items: center; border: 2px solid white; border-radius: 999px; background: #079447; color: white; font-size: 9px; }
+      .vd-avatar { width: 43px; height: 43px; display: grid; place-items: center; position: relative; border-radius: 999px; background: #082a49; color: white; font-weight: 850; font-size: 13px; }
+      .vd-avatar span { position: absolute; right: 1px; bottom: 1px; width: 10px; height: 10px; border: 2px solid white; border-radius: 999px; background: #20bd69; }
+      .vd-page { padding: 26px 30px 38px; }
+      .vd-error { margin-bottom: 18px; padding: 13px 15px; border: 1px solid #f3c4c4; border-radius: 12px; background: #fff2f2; color: #a42b2b; }
+      .vd-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+      .vd-summary-card { min-height: 106px; display: flex; align-items: center; gap: 13px; padding: 16px; border: 1px solid #e0e7ec; border-radius: 15px; background: white; box-shadow: 0 6px 18px rgba(26, 53, 73, .055); }
+      .vd-summary-icon { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 12px; }
+      .vd-summary-icon.green { background: #e7f7ed; color: #079447; }
+      .vd-summary-icon.blue { background: #eaf1ff; color: #3478f6; }
+      .vd-summary-icon.red { background: #fdeaea; color: #e34d4d; }
+      .vd-summary-icon.purple { background: #f0ebff; color: #8058e8; }
+      .vd-summary-icon.amber { background: #fff3df; color: #e4932c; }
+      .vd-summary-card > div { display: grid; grid-template-columns: auto 1fr; align-items: end; column-gap: 8px; }
+      .vd-summary-card span { grid-column: 1 / -1; color: #647487; font-size: 12px; font-weight: 750; }
+      .vd-summary-card strong { color: #12283b; font-size: 28px; line-height: 1; font-weight: 900; }
+      .vd-summary-card small { color: #8a98a7; font-size: 11px; padding-bottom: 2px; }
+      .vd-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; align-items: start; }
+      .vd-panel { border: 1px solid #e0e7ec; border-radius: 17px; background: white; box-shadow: 0 8px 24px rgba(26, 53, 73, .055); }
+      .vd-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      .vd-panel-header h2 { margin: 0; color: #13293b; font-size: 17px; font-weight: 850; }
+      .vd-panel-header > a { color: #079447; text-decoration: none; font-size: 12px; font-weight: 750; }
+      .vd-calendar-panel { overflow: hidden; }
+      .vd-calendar-header { padding: 18px 20px 16px; border-bottom: 1px solid #e4eaee; }
+      .vd-month-controls { display: flex; align-items: center; gap: 6px; margin-top: 11px; }
+      .vd-month-controls button { height: 30px; min-width: 30px; display: grid; place-items: center; border: 1px solid #dfe7ec; border-radius: 8px; background: white; color: #607386; cursor: pointer; }
+      .vd-month-controls .vd-today-button { padding: 0 10px; display: inline-flex; align-items: center; font-size: 12px; font-weight: 750; }
+      .vd-month-controls strong { margin-left: 8px; color: #1a3042; font-size: 14px; }
+      .vd-calendar-actions { display: flex; align-items: center; gap: 10px; }
+      .vd-view-switch { display: flex; padding: 3px; border: 1px solid #dfe7ec; border-radius: 9px; background: #f8fafb; }
+      .vd-view-switch button { padding: 7px 10px; border: 0; border-radius: 6px; background: transparent; color: #718194; font-size: 11px; cursor: pointer; }
+      .vd-view-switch button.active { background: #e7f6ed; color: #067c3d; font-weight: 800; }
+      .vd-primary-button, .vd-secondary-button, .vd-navigate { text-decoration: none; }
+      .vd-primary-button { height: 36px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; border-radius: 9px; background: #082a49; color: white; font-size: 12px; font-weight: 800; }
+      .vd-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+      .vd-weekday { padding: 9px 10px; border-bottom: 1px solid #e6ecef; color: #8190a0; font-size: 10px; font-weight: 850; text-align: center; }
+      .vd-day { min-height: 76px; padding: 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; border: 0; border-right: 1px solid #edf1f3; border-bottom: 1px solid #edf1f3; background: white; color: #415568; cursor: pointer; }
+      .vd-day:nth-child(7n) { border-right: 0; }
+      .vd-day:hover { background: #f8fbf9; }
+      .vd-day.outside { color: #b4bdc6; background: #fbfcfd; }
+      .vd-day.selected { position: relative; background: #f4fbf7; box-shadow: inset 0 0 0 2px #9ad7b5; }
+      .vd-day-number { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 999px; font-size: 12px; font-weight: 750; }
+      .vd-day.today .vd-day-number { background: #082a49; color: white; }
+      .vd-day-dots { min-height: 7px; display: flex; align-items: center; justify-content: center; gap: 4px; }
+      .vd-day-dots i { width: 6px; height: 6px; border-radius: 999px; }
+      .vd-agenda { padding: 18px 20px 20px; }
+      .vd-agenda-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+      .vd-agenda-title h3 { margin: 0; color: #1a3042; font-size: 14px; font-weight: 850; }
+      .vd-agenda-title span { color: #8a98a7; font-size: 11px; }
+      .vd-agenda-list { display: grid; gap: 8px; }
+      .vd-agenda-row { min-height: 66px; display: grid; grid-template-columns: 8px 92px minmax(170px, 1fr) minmax(120px, .7fr) 54px auto 28px; align-items: center; gap: 11px; padding: 10px 11px; border: 1px solid #e5ebef; border-radius: 11px; background: #fff; }
+      .vd-agenda-dot { width: 7px; height: 7px; border-radius: 999px; }
+      .vd-agenda-time { color: #51677a; font-size: 11px; font-weight: 750; }
+      .vd-agenda-main { min-width: 0; display: grid; gap: 3px; }
+      .vd-agenda-main strong { overflow: hidden; color: #172d3f; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+      .vd-agenda-main span, .vd-agenda-people, .vd-agenda-elevator { color: #7a8a9a; font-size: 10px; }
+      .vd-agenda-people { min-width: 0; display: flex; align-items: center; gap: 5px; }
+      .vd-agenda-people span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .vd-agenda-elevator { font-weight: 750; text-align: center; }
+      .vd-navigate { height: 30px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 1px solid #dce6e1; border-radius: 8px; color: #087c3e; background: #f6fbf8; font-size: 10px; font-weight: 800; }
+      .vd-more { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: #8594a3; cursor: pointer; }
+      .vd-empty { padding: 18px; border: 1px dashed #d8e1e6; border-radius: 11px; color: #8391a0; background: #fafcfd; font-size: 12px; }
+      .vd-show-all { display: inline-flex; margin-top: 12px; color: #078644; text-decoration: none; font-size: 11px; font-weight: 800; }
+      .vd-right-column { display: grid; gap: 18px; }
+      .vd-side-panel { padding: 17px; }
+      .vd-technicians { display: grid; gap: 5px; margin: 13px 0; }
+      .vd-technician { min-height: 48px; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 7px 5px; border-bottom: 1px solid #edf1f3; }
+      .vd-technician:last-child { border-bottom: 0; }
+      .vd-technician-avatar { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: #edf4f8; color: #24475e; font-size: 10px; font-weight: 850; }
+      .vd-technician > div:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+      .vd-technician strong { overflow: hidden; color: #1a3042; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+      .vd-technician span { color: #8b99a7; font-size: 9px; }
+      .vd-status { padding: 5px 7px; border-radius: 999px; font-size: 9px; font-weight: 800; white-space: nowrap; }
+      .vd-status.field { background: #e6f7ed; color: #087b3e; }
+      .vd-status.travel { background: #fff1d9; color: #9a651e; }
+      .vd-status.office { background: #eef2f5; color: #718090; }
+      .vd-secondary-button { min-height: 36px; display: flex; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid #dce5ea; border-radius: 9px; background: #fafcfd; color: #335269; font-size: 11px; font-weight: 800; }
+      .vd-quick-actions { display: grid; margin-top: 9px; }
+      .vd-quick-actions a { min-height: 46px; display: grid; grid-template-columns: 32px 1fr 18px; align-items: center; gap: 9px; border-bottom: 1px solid #edf1f3; color: #243a4c; text-decoration: none; }
+      .vd-quick-actions a:last-child { border-bottom: 0; }
+      .vd-quick-actions strong { font-size: 11px; }
+      .vd-quick-actions a > svg { color: #9aa6b2; }
+      .vd-quick-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; }
+      .vd-quick-icon.red { background: #fdeaea; color: #dc4b4b; }
+      .vd-quick-icon.blue { background: #eaf1ff; color: #3478f6; }
+      .vd-quick-icon.green { background: #e7f7ed; color: #079447; }
+      .vd-quick-icon.purple { background: #f0ebff; color: #8058e8; }
+      .vd-tools-overview { display: grid; gap: 0; margin: 10px 0 13px; }
+      .vd-tools-overview > div { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #edf1f3; }
+      .vd-tools-overview > div:last-child { border-bottom: 0; }
+      .vd-tools-overview span { color: #708194; font-size: 11px; }
+      .vd-tools-overview strong { color: #183045; font-size: 12px; }
+      .vd-tools-overview strong.attention { color: #d98223; }
+      @media (max-width: 1250px) { .vd-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .vd-dashboard-grid { grid-template-columns: 1fr; } .vd-right-column { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+      @media (max-width: 900px) { .vd-topbar { padding: 14px 16px; } .vd-page { padding: 16px; } .vd-search { display: none; } .vd-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .vd-right-column { grid-template-columns: 1fr; } .vd-calendar-header { align-items: flex-start; } .vd-calendar-actions { align-items: flex-end; flex-direction: column; } .vd-view-switch { display: none; } .vd-agenda-row { grid-template-columns: 8px 78px minmax(0, 1fr) auto; } .vd-agenda-people, .vd-agenda-elevator, .vd-more { display: none; } }
+      @media (max-width: 600px) { .vd-greeting h1 { font-size: 20px; } .vd-topbar-actions { gap: 6px; } .vd-icon-button { width: 38px; height: 38px; } .vd-avatar { width: 39px; height: 39px; } .vd-stats { grid-template-columns: 1fr; } .vd-summary-card { min-height: 84px; } .vd-calendar-header { display: grid; } .vd-calendar-actions { align-items: stretch; } .vd-primary-button { justify-content: center; } .vd-day { min-height: 58px; padding: 5px; } .vd-day-number { width: 22px; height: 22px; font-size: 10px; } .vd-agenda-row { grid-template-columns: 7px 66px minmax(0, 1fr); } .vd-navigate { display: none; } }
     `}</style>
   );
 }
