@@ -4,6 +4,7 @@ import GlobalSidebar from "@/components/GlobalSidebar";
 import GlobalChrome from "@/components/GlobalChrome";
 import "./globals.css";
 import "./modern-overrides.css";
+import "./chrome-fixes.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
