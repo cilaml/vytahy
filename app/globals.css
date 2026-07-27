@@ -1,8 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f3f6f8;
+  --foreground: #102536;
+  --brand-navy: #082a49;
+  --brand-navy-2: #0d385f;
+  --brand-green: #079447;
+  --brand-green-soft: #e7f6ed;
+  --line: #dce5ea;
+  --card: #ffffff;
 }
 
 @theme inline {
@@ -12,15 +18,86 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+* { box-sizing: border-box; }
+html { background: var(--background); }
 body {
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+button, input, select, textarea { font: inherit; }
+
+/* Hide the old duplicated sidebars. The new navigation is shared by the whole app. */
+body .app-layout > .sidebar { display: none !important; }
+body .app-layout { display: block !important; min-height: 100vh; }
+body .app-layout > .content { margin-left: 270px !important; min-width: 0; }
+body > main.shell,
+body > main.page-shell { margin-left: 270px !important; }
+
+.global-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 1000;
+  width: 270px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #082a49 0%, #061e34 100%);
+  color: white;
+  box-shadow: 12px 0 35px rgba(6, 30, 52, .14);
+  overflow-y: auto;
+}
+.global-brand {
+  display: block;
+  margin: 15px;
+  padding: 9px;
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 10px 28px rgba(0,0,0,.12);
+}
+.global-brand img { display: block; width: 100%; height: 68px; object-fit: contain; }
+.global-user { margin: 0 16px 12px; padding: 13px 14px; border-radius: 12px; background: rgba(255,255,255,.08); display: grid; gap: 4px; }
+.global-user span { color: #a9bed0; font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
+.global-user strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; }
+.global-sidebar nav { padding: 0 10px 18px; }
+.global-main-link,
+.global-nav-group > button,
+.global-subnav a {
+  width: 100%; border: 0; text-decoration: none; color: #dce8f2; display: flex; align-items: center; gap: 11px; border-radius: 10px; cursor: pointer;
+}
+.global-main-link { padding: 12px 13px; font-weight: 900; margin-bottom: 5px; }
+.global-main-link > span { width: 22px; font-size: 20px; }
+.global-main-link:hover,
+.global-main-link.active { background: #079447; color: white; }
+.global-nav-group { margin-top: 6px; }
+.global-nav-group > button { background: transparent; padding: 11px 13px; font-weight: 900; text-align: left; }
+.global-nav-group > button:hover,
+.global-nav-group > button.active { background: rgba(255,255,255,.08); color: white; }
+.global-nav-icon { width: 22px; font-size: 18px; text-align: center; }
+.global-chevron { margin-left: auto; color: #90a9bc; }
+.global-subnav { display: grid; gap: 3px; padding: 2px 0 5px 20px; }
+.global-subnav a { padding: 9px 11px; font-size: 14px; font-weight: 700; }
+.global-subnav a > span { width: 18px; text-align: center; color: #8fc9a8; }
+.global-subnav a:hover,
+.global-subnav a.active { color: white; background: rgba(7,148,71,.24); }
+.global-subnav a.active { box-shadow: inset 3px 0 0 #20bd69; }
+.global-sidebar-footer { margin: auto 15px 16px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,.12); color: #a9bed0; font-size: 12px; }
+.status-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 999px; background: #20bd69; }
+.global-menu-button { display: none; position: fixed; top: 12px; left: 12px; z-index: 1100; width: 45px; height: 45px; border: 0; border-radius: 12px; background: #082a49; color: white; font-size: 24px; box-shadow: 0 8px 22px rgba(8,42,73,.25); }
+.global-sidebar-overlay { display: none; }
+
+/* Common cleanup for existing pages */
+body .content { background: var(--background) !important; }
+body .topbar, body .card { border-color: var(--line) !important; }
+body .card { box-shadow: 0 10px 28px rgba(16,37,54,.07) !important; }
+body input:focus, body select:focus, body textarea:focus { outline: 3px solid rgba(7,148,71,.15); border-color: var(--brand-green) !important; }
+
+@media (max-width: 900px) {
+  body .app-layout > .content,
+  body > main.shell,
+  body > main.page-shell { margin-left: 0 !important; padding-top: 68px !important; }
+  .global-menu-button { display: block; }
+  .global-sidebar { transform: translateX(-105%); transition: transform .2s ease; width: min(86vw, 290px); }
+  .global-sidebar.open { transform: translateX(0); }
+  .global-sidebar-overlay { display: block; position: fixed; inset: 0; z-index: 990; border: 0; background: rgba(3,17,29,.52); }
 }
