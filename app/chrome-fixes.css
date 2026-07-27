@@ -1,0 +1,17 @@
+.vd-topbar-actions .vd-search {
+  display: none !important;
+}
+
+.global-action-modal > .global-form-grid.three {
+  grid-template-columns: 1.2fr 1fr;
+}
+
+.global-action-modal > .global-form-grid.three > label:nth-child(3) {
+  display: none;
+}
+
+@media (max-width: 650px) {
+  .global-action-modal > .global-form-grid.three {
+    grid-template-columns: 1fr;
+  }
+}
