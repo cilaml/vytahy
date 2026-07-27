@@ -5,6 +5,7 @@ import GlobalChrome from "@/components/GlobalChrome";
 import "./globals.css";
 import "./modern-overrides.css";
 import "./chrome-fixes.css";
+import "./contrast-fixes.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
