@@ -57,6 +57,37 @@ export default function GlobalSidebar() {
     setMobileOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (pathname !== "/faults" || typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") !== "1") return;
+
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      const createButton = document.querySelector<HTMLButtonElement>(
+        ".content .topbar .primary-action"
+      );
+
+      if (createButton) {
+        createButton.click();
+        window.clearInterval(timer);
+        window.setTimeout(() => {
+          document.querySelector(".content .form-card")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }, 120);
+        window.history.replaceState({}, "", "/faults");
+      } else if (attempts >= 30) {
+        window.clearInterval(timer);
+      }
+    }, 100);
+
+    return () => window.clearInterval(timer);
+  }, [pathname]);
+
   if (pathname === "/login") return null;
 
   function toggle(label: string) {
@@ -139,6 +170,13 @@ export default function GlobalSidebar() {
           <span>Verze 1.0.0</span>
         </div>
       </aside>
+
+      {pathname === "/dashboard" && (
+        <a className="dashboard-fault-fab" href="/faults?new=1">
+          <span>!</span>
+          <strong>Rychle založit poruchu</strong>
+        </a>
+      )}
     </>
   );
 }
