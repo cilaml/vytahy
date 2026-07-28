@@ -6,6 +6,7 @@ import "./globals.css";
 import "./modern-overrides.css";
 import "./chrome-fixes.css";
 import "./contrast-fixes.css";
+import "./mobile-card-polish.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

@@ -1,0 +1,324 @@
+/* Jemnější mobilní karty a lepší kontrast pro servis, poruchy a zprávy */
+
+.app-content-root .primary-link-button,
+.app-content-root a.primary-link-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 48px !important;
+  padding: 12px 20px !important;
+  border: 1px solid #056d37 !important;
+  border-radius: 14px !important;
+  background: linear-gradient(135deg, #079447 0%, #056d37 100%) !important;
+  color: #ffffff !important;
+  font-weight: 900 !important;
+  text-decoration: none !important;
+  text-shadow: none !important;
+  box-shadow: 0 12px 26px rgba(7, 148, 71, 0.22) !important;
+}
+
+.app-content-root .primary-link-button:hover,
+.app-content-root a.primary-link-button:hover {
+  background: linear-gradient(135deg, #06853f 0%, #045c2f 100%) !important;
+}
+
+/* PORUCHY */
+.app-content-root .fault-list {
+  gap: 18px !important;
+}
+
+.app-content-root .fault-card {
+  position: relative !important;
+  overflow: hidden !important;
+  padding: 22px !important;
+  border: 1px solid #c9d6dd !important;
+  border-left: 5px solid #2f75d6 !important;
+  border-radius: 20px !important;
+  background: #ffffff !important;
+  color: #10273a !important;
+  box-shadow: 0 12px 30px rgba(10, 38, 57, 0.09) !important;
+}
+
+.app-content-root .fault-card.urgent {
+  border-color: #efb3b3 !important;
+  border-left-color: #cf3434 !important;
+  background: linear-gradient(135deg, #ffffff 0%, #fff6f6 100%) !important;
+}
+
+.app-content-root .fault-card h2 {
+  color: #062b49 !important;
+  line-height: 1.2 !important;
+}
+
+.app-content-root .fault-card p,
+.app-content-root .fault-card .meta-text {
+  color: #52697b !important;
+}
+
+.app-content-root .fault-main {
+  align-items: stretch !important;
+}
+
+.app-content-root .fault-side {
+  display: grid !important;
+  align-content: center !important;
+  gap: 14px !important;
+  padding: 17px !important;
+  border: 1px solid #c8d9e5 !important;
+  border-radius: 16px !important;
+  background: linear-gradient(145deg, #eef6fb 0%, #f8fbfd 100%) !important;
+  color: #10273a !important;
+  box-shadow: none !important;
+}
+
+.app-content-root .fault-card.urgent .fault-side {
+  border-color: #eccaca !important;
+  background: linear-gradient(145deg, #fff0f0 0%, #fffafa 100%) !important;
+}
+
+.app-content-root .fault-side > div {
+  padding-bottom: 12px !important;
+  border-bottom: 1px solid #d9e4ea !important;
+}
+
+.app-content-root .fault-side > div:last-child {
+  padding-bottom: 0 !important;
+  border-bottom: 0 !important;
+}
+
+.app-content-root .fault-side strong {
+  color: #466176 !important;
+  font-size: 12px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.045em !important;
+}
+
+.app-content-root .fault-side span {
+  color: #10273a !important;
+  font-size: 16px !important;
+  font-weight: 750 !important;
+}
+
+.app-content-root .timeline {
+  margin-top: 16px !important;
+  padding: 16px !important;
+  border: 1px solid #d4e0e6 !important;
+  border-radius: 15px !important;
+  background: #f5f8fa !important;
+  color: #10273a !important;
+  box-shadow: none !important;
+}
+
+.app-content-root .timeline > strong {
+  display: block !important;
+  margin-bottom: 10px !important;
+  color: #062b49 !important;
+}
+
+.app-content-root .timeline-item {
+  padding: 11px 0 !important;
+  border-top: 1px solid #dde6eb !important;
+}
+
+.app-content-root .timeline-item span,
+.app-content-root .timeline-item p {
+  color: #52697b !important;
+}
+
+.app-content-root .pill.red {
+  border-color: #e7a8a8 !important;
+  background: #ffe9e9 !important;
+  color: #a72121 !important;
+}
+
+.app-content-root .pill.amber {
+  border-color: #e8bd88 !important;
+  background: #fff0dc !important;
+  color: #874500 !important;
+}
+
+.app-content-root .pill.blue {
+  border-color: #a9c6ee !important;
+  background: #e8f1ff !important;
+  color: #174f9b !important;
+}
+
+.app-content-root .pill.green {
+  border-color: #9bd0ae !important;
+  background: #dff3e7 !important;
+  color: #075e31 !important;
+}
+
+.app-content-root .fault-actions {
+  margin-top: 18px !important;
+  padding-top: 16px !important;
+  border-top: 1px solid #dce5ea !important;
+}
+
+.app-content-root .fault-actions .secondary-action {
+  background: #f7fafb !important;
+  border: 1px solid #afc0ca !important;
+  color: #1d4058 !important;
+}
+
+.app-content-root .fault-actions .success-action {
+  border: 1px solid #08743c !important;
+  background: linear-gradient(135deg, #19a952 0%, #08743c 100%) !important;
+  color: #ffffff !important;
+}
+
+.app-content-root .fault-actions .delete-action {
+  border: 1px solid #e1a6a6 !important;
+  background: #fff0f0 !important;
+  color: #a62121 !important;
+}
+
+/* ZPRÁVY */
+.app-content-root .message-list {
+  gap: 18px !important;
+}
+
+.app-content-root .message-card {
+  position: relative !important;
+  overflow: hidden !important;
+  padding: 22px !important;
+  border: 1px solid #c9d6dd !important;
+  border-left: 5px solid #079447 !important;
+  border-radius: 20px !important;
+  background: #ffffff !important;
+  color: #10273a !important;
+  box-shadow: 0 12px 30px rgba(10, 38, 57, 0.09) !important;
+}
+
+.app-content-root .message-card h2 {
+  color: #062b49 !important;
+}
+
+.app-content-root .message-meta {
+  color: #607688 !important;
+  line-height: 1.45 !important;
+}
+
+.app-content-root .message-body {
+  margin: 16px 0 !important;
+  padding: 16px !important;
+  border: 1px solid #d8e3e9 !important;
+  border-radius: 14px !important;
+  background: linear-gradient(145deg, #f5f9fb 0%, #ffffff 100%) !important;
+  color: #17364d !important;
+  font-size: 16px !important;
+  line-height: 1.6 !important;
+}
+
+.app-content-root .reaction-row {
+  gap: 8px !important;
+}
+
+.app-content-root .reaction-button {
+  border: 1px solid #b8c8d1 !important;
+  background: #f8fafb !important;
+  color: #24475f !important;
+  box-shadow: none !important;
+}
+
+.app-content-root .reaction-button.active {
+  border-color: #74b98f !important;
+  background: #dff3e7 !important;
+  color: #075e31 !important;
+}
+
+.app-content-root .text-reaction-row {
+  padding-top: 14px !important;
+  border-top: 1px solid #e0e8ec !important;
+}
+
+.app-content-root .reactions-box {
+  margin-top: 16px !important;
+  padding: 15px !important;
+  border: 1px solid #c9ded1 !important;
+  border-radius: 14px !important;
+  background: #f0f8f3 !important;
+  color: #17364d !important;
+  box-shadow: none !important;
+}
+
+.app-content-root .reactions-box > strong {
+  color: #075e31 !important;
+}
+
+.app-content-root .reaction-item {
+  padding: 9px 0 !important;
+  border-top: 1px solid #d9e9df !important;
+  color: #35566c !important;
+}
+
+.app-content-root .reaction-item strong,
+.app-content-root .reaction-item span {
+  color: #35566c !important;
+}
+
+.app-content-root .reaction-time {
+  color: #738796 !important;
+}
+
+.app-content-root .message-card .delete-button {
+  border: 1px solid #e1a6a6 !important;
+  background: #fff0f0 !important;
+  color: #a62121 !important;
+}
+
+@media (max-width: 760px) {
+  .app-content-root .primary-link-button,
+  .app-content-root a.primary-link-button {
+    width: 100% !important;
+  }
+
+  .app-content-root .fault-card,
+  .app-content-root .message-card {
+    padding: 18px !important;
+    border-radius: 18px !important;
+  }
+
+  .app-content-root .fault-main {
+    grid-template-columns: 1fr !important;
+  }
+
+  .app-content-root .fault-side {
+    margin-top: 4px !important;
+  }
+
+  .app-content-root .fault-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .app-content-root .fault-actions button,
+  .app-content-root .message-card .text-reaction-row button {
+    width: 100% !important;
+    min-height: 48px !important;
+  }
+
+  .app-content-root .message-top {
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  .app-content-root .message-body {
+    padding: 14px !important;
+  }
+
+  .app-content-root .reaction-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .app-content-root .reaction-button {
+    min-height: 44px !important;
+  }
+
+  .app-content-root .text-reaction-row {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+}
