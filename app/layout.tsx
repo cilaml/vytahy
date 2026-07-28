@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import GlobalSidebar from "@/components/GlobalSidebar";
 import GlobalChrome from "@/components/GlobalChrome";
+import TechnicianAvailabilityManagerSafe from "@/components/TechnicianAvailabilityManagerSafe";
 import "./globals.css";
 import "./modern-overrides.css";
 import "./chrome-fixes.css";
 import "./contrast-fixes.css";
 import "./mobile-card-polish.css";
+import "./technician-availability.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +35,7 @@ export default function RootLayout({
       <body className="min-h-full">
         <GlobalSidebar />
         <GlobalChrome />
+        <TechnicianAvailabilityManagerSafe />
         <div className="app-content-root">{children}</div>
       </body>
     </html>
