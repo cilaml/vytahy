@@ -13,6 +13,10 @@
   --shadow-card: 0 12px 32px rgba(10, 38, 57, 0.09);
 }
 
+html {
+  color-scheme: light;
+}
+
 body,
 .app-content-root,
 .app-content-root .app-layout,
@@ -74,6 +78,20 @@ body,
   color: #0b2335 !important;
   border-color: var(--line-strong) !important;
   box-shadow: inset 0 1px 2px rgba(12, 37, 53, 0.04) !important;
+}
+
+.app-content-root input[type="checkbox"],
+.app-content-root input[type="radio"],
+.global-action-modal input[type="checkbox"],
+.global-action-modal input[type="radio"] {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  accent-color: var(--brand-green);
+  box-shadow: none !important;
 }
 
 .app-content-root input::placeholder,
@@ -161,6 +179,55 @@ body,
 .global-action-modal,
 .global-suggestions {
   border-color: #bdccd5 !important;
+}
+
+/* Staré formuláře měly uvnitř ještě tmavou paletu. */
+.app-content-root .suggestions,
+.app-content-root .suggest-item,
+.app-content-root .helpers-list,
+.app-content-root .fault-side,
+.app-content-root .timeline,
+.app-content-root .empty-box {
+  background: #ffffff !important;
+  border-color: var(--line) !important;
+  color: var(--foreground) !important;
+}
+
+.app-content-root .suggestions,
+.app-content-root .helpers-list,
+.app-content-root .fault-side,
+.app-content-root .timeline {
+  box-shadow: 0 12px 28px rgba(10, 38, 57, 0.08) !important;
+}
+
+.app-content-root .suggest-item:hover {
+  background: #edf8f1 !important;
+  border-color: #9fcbb0 !important;
+}
+
+.app-content-root .suggest-empty,
+.app-content-root .suggest-item span,
+.app-content-root .suggest-item small,
+.app-content-root .check-row,
+.app-content-root .fault-side span,
+.app-content-root .timeline-item p,
+.app-content-root .empty-box {
+  color: #3f5b6e !important;
+}
+
+.app-content-root .check-row {
+  min-height: 34px;
+  padding: 4px 2px;
+  font-weight: 750;
+}
+
+.app-content-root .check-row.muted {
+  color: #80919e !important;
+}
+
+.app-content-root .helpers-box > span,
+.app-content-root .field > span {
+  color: #263f52 !important;
 }
 
 .global-notification-list > button {

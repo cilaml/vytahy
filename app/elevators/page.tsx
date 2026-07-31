@@ -1558,14 +1558,14 @@ function MiniStat({
   if (tone === "green") {
     valueStyle = {
       ...styles.statValue,
-      color: "#86efac",
+      color: "#078344",
     };
   }
 
   if (tone === "red") {
     valueStyle = {
       ...styles.statValue,
-      color: "#fca5a5",
+      color: "#b42318",
     };
   }
 
@@ -1887,21 +1887,21 @@ const styles: Record<string, CSSProperties> = {
   },
 
   statLabel: {
-    color: "#94a3b8",
+    color: "#52697b",
     fontSize: 13,
     fontWeight: 900,
   },
 
   statValue: {
     marginTop: 6,
-    color: "#f8fafc",
+    color: "#0a304c",
     fontSize: 30,
     fontWeight: 950,
   },
 
   statDescription: {
     marginTop: 3,
-    color: "#64748b",
+    color: "#52697b",
     fontSize: 13,
   },
 
@@ -2125,14 +2125,14 @@ const styles: Record<string, CSSProperties> = {
   },
 
   detailLabel: {
-    color: "#64748b",
+    color: "#52697b",
     fontSize: 12,
     fontWeight: 950,
     textTransform: "uppercase",
   },
 
   detailValue: {
-    color: "#e2e8f0",
+    color: "#17374d",
     fontWeight: 850,
     marginTop: 5,
   },
@@ -2151,7 +2151,7 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     gap: 10,
     flexWrap: "wrap",
-    color: "#cbd5e1",
+    color: "#52697b",
     fontSize: 14,
   },
 
