@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Výtahy DC</title>
+  <rect width="512" height="512" rx="112" fill="#0f2747"/>
+  <rect x="104" y="92" width="304" height="328" rx="36" fill="#f8fafc"/>
+  <rect x="132" y="120" width="248" height="252" rx="18" fill="#0f172a"/>
+  <path d="M148 136h99v220h-99z" fill="#1e3a5f"/>
+  <path d="M265 136h99v220h-99z" fill="#16304f"/>
+  <path d="M247 136h18v220h-18z" fill="#94a3b8"/>
+  <path d="M256 52l48 48h-32v44h-32v-44h-32z" fill="#22a447"/>
+  <path d="M256 460l-48-48h32v-44h32v44h32z" fill="#22a447"/>
+  <circle cx="352" cy="392" r="18" fill="#22a447"/>
+</svg>

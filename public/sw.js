@@ -1,5 +1,5 @@
 self.addEventListener("install", function (event) {
-  self.skipWaiting();
+  event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", function (event) {
@@ -26,8 +26,8 @@ self.addEventListener("push", function (event) {
 
   const options = {
     body: data.body || "Máš nové upozornění.",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
 
     // důležité pro Android / Chrome
     silent: false,
