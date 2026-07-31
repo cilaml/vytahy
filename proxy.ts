@@ -1,7 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  applyAuthPersistence,
+  REMEMBER_ME_COOKIE,
+  shouldPersistAuthCookies,
+} from "@/lib/supabase/auth-persistence";
 
 export async function proxy(request: NextRequest) {
+  const persist = shouldPersistAuthCookies(
+    request.cookies.get(REMEMBER_ME_COOKIE)?.value
+  );
+
   let response = NextResponse.next({
     request,
   });
@@ -23,9 +32,13 @@ export async function proxy(request: NextRequest) {
             request,
           });
 
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(
+              name,
+              value,
+              applyAuthPersistence(options, persist)
+            );
+          });
         },
       },
     }

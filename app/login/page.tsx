@@ -1,14 +1,33 @@
 "use client";
 
-import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import {
+  createClient,
+  setRememberMePreference,
+} from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+
+    void supabase.auth.getUser().then(({ data }) => {
+      if (active && data.user) {
+        window.location.replace("/dashboard");
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -16,6 +35,7 @@ export default function LoginPage() {
     setLoading(true);
     setMessage("");
 
+    setRememberMePreference(rememberMe);
     const supabase = createClient();
 
     const { error } = await supabase.auth.signInWithPassword({
@@ -30,7 +50,7 @@ export default function LoginPage() {
       return;
     }
 
-   window.location.href = "/dashboard";
+    window.location.href = "/dashboard";
   }
 
   return (
@@ -63,6 +83,38 @@ export default function LoginPage() {
             required
             style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #334155", background: "#020617", color: "white", marginBottom: 16 }}
           />
+
+          <label
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+              marginBottom: 18,
+              cursor: loading ? "default" : "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              disabled={loading}
+              onChange={(event) => setRememberMe(event.target.checked)}
+              style={{
+                width: 18,
+                height: 18,
+                margin: "2px 0 0",
+                accentColor: "#2563eb",
+                flexShrink: 0,
+              }}
+            />
+            <span>
+              <span style={{ display: "block", color: "#e2e8f0", fontSize: 14, fontWeight: 600 }}>
+                Pamatovat si mě na tomto zařízení
+              </span>
+              <span style={{ display: "block", color: "#94a3b8", fontSize: 12, marginTop: 2 }}>
+                Přihlášení zůstane aktivní i po zavření prohlížeče.
+              </span>
+            </span>
+          </label>
 
           {message && (
             <div style={{ border: "1px solid #7f1d1d", background: "#450a0a", color: "#fecaca", borderRadius: 12, padding: 12, marginBottom: 16 }}>
