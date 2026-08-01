@@ -57,7 +57,8 @@ type Region = {
 
 type Fault = {
   id: string;
-  elevator_id: string;
+  elevator_id: string | null;
+  custom_elevator_label: string | null;
   region_id: string | null;
   priority: FaultPriority;
   status: FaultStatus;
@@ -194,15 +195,23 @@ export default function FaultsPage() {
     ) as string[];
   }
 
-  function getElevator(elevatorId: string) {
+  function getElevator(elevatorId: string | null) {
+    if (!elevatorId) return null;
+
     return elevators.find((item) => item.id === elevatorId) ?? null;
   }
 
-  function getElevatorLabel(elevatorId: string) {
+  function getElevatorLabel(elevatorId: string | null) {
     const elevator = getElevator(elevatorId);
     if (!elevator) return "Neznámý výtah";
 
     return `${elevator.address} — ${elevator.label}`;
+  }
+
+  function getFaultElevatorLabel(fault: Fault) {
+    return fault.elevator_id
+      ? getElevatorLabel(fault.elevator_id)
+      : fault.custom_elevator_label || "Neznámý výtah";
   }
 
   function getRegionName(regionId: string | null) {
@@ -357,6 +366,7 @@ export default function FaultsPage() {
 
       const searchable = [
         fault.description,
+        fault.custom_elevator_label,
         priorityLabels[fault.priority],
         statusLabels[fault.status],
         elevator?.label,
@@ -471,7 +481,7 @@ export default function FaultsPage() {
       supabase
         .from("faults")
         .select(
-          "id, elevator_id, region_id, priority, status, description, created_by, main_technician_id, created_at, finished_at, archived_at"
+          "id, elevator_id, custom_elevator_label, region_id, priority, status, description, created_by, main_technician_id, created_at, finished_at, archived_at"
         )
         .order("created_at", { ascending: false }),
 
@@ -569,14 +579,18 @@ export default function FaultsPage() {
 
     setEditingFaultId(fault.id);
     setForm({
-      elevator_id: fault.elevator_id,
+      elevator_id: fault.elevator_id ?? "",
       priority: fault.priority,
       description: fault.description,
       main_technician_id: fault.main_technician_id ?? "",
       helper_ids: helpers,
       note: "",
     });
-    setElevatorQuery(getElevatorLabel(fault.elevator_id));
+    setElevatorQuery(
+      fault.elevator_id
+        ? getElevatorLabel(fault.elevator_id)
+        : fault.custom_elevator_label ?? ""
+    );
     setShowForm(true);
 
     window.scrollTo({
@@ -663,17 +677,19 @@ export default function FaultsPage() {
   async function saveFault(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!form.elevator_id) {
-      setMessage("Vyber výtah z našeptávače.");
+    const customElevatorLabel = elevatorQuery.trim();
+
+    if (!customElevatorLabel) {
+      setMessage("Napiš nebo vyber výtah.");
       setSuccessMessage("");
       return;
     }
 
-    const selectedElevator = elevators.find(
-      (item) => item.id === form.elevator_id
-    );
+    const selectedElevator = form.elevator_id
+      ? elevators.find((item) => item.id === form.elevator_id)
+      : null;
 
-    if (!selectedElevator) {
+    if (form.elevator_id && !selectedElevator) {
       setMessage("Vybraný výtah nebyl nalezen.");
       setSuccessMessage("");
       return;
@@ -709,8 +725,9 @@ export default function FaultsPage() {
       const { error: updateError } = await supabase
         .from("faults")
         .update({
-          elevator_id: selectedElevator.id,
-          region_id: selectedElevator.region_id,
+          elevator_id: selectedElevator?.id ?? null,
+          custom_elevator_label: selectedElevator ? null : customElevatorLabel,
+          region_id: selectedElevator?.region_id ?? null,
           priority: form.priority,
           description,
           main_technician_id: form.main_technician_id || null,
@@ -805,8 +822,9 @@ export default function FaultsPage() {
     const { data: insertedFault, error: insertError } = await supabase
       .from("faults")
       .insert({
-        elevator_id: selectedElevator.id,
-        region_id: selectedElevator.region_id,
+        elevator_id: selectedElevator?.id ?? null,
+        custom_elevator_label: selectedElevator ? null : customElevatorLabel,
+        region_id: selectedElevator?.region_id ?? null,
         priority: form.priority,
         status,
         description,
@@ -1103,31 +1121,30 @@ export default function FaultsPage() {
                     }}
                     placeholder="Piš adresu, označení, PR, PL nebo výrobní číslo..."
                     className="input"
+                    required
                   />
 
-                  {elevatorQuery && !form.elevator_id && (
+                  {elevatorQuery &&
+                    !form.elevator_id &&
+                    elevatorSuggestions.length > 0 && (
                     <div className="suggestions">
-                      {elevatorSuggestions.length === 0 ? (
-                        <div className="suggest-empty">Žádný výtah nenalezen.</div>
-                      ) : (
-                        elevatorSuggestions.map((elevator) => (
-                          <button
-                            key={elevator.id}
-                            type="button"
-                            onClick={() => selectElevator(elevator)}
-                            className="suggest-item"
-                          >
-                            <strong>{elevator.address}</strong>
-                            <span>{elevator.label}</span>
-                            <small>
-                              Rajon: {getRegionName(elevator.region_id)} · PR:{" "}
-                              {elevator.pr_number || "—"} · PL:{" "}
-                              {elevator.pl_number || "—"} · Výr. č.:{" "}
-                              {elevator.serial_number || "—"}
-                            </small>
-                          </button>
-                        ))
-                      )}
+                      {elevatorSuggestions.map((elevator) => (
+                        <button
+                          key={elevator.id}
+                          type="button"
+                          onClick={() => selectElevator(elevator)}
+                          className="suggest-item"
+                        >
+                          <strong>{elevator.address}</strong>
+                          <span>{elevator.label}</span>
+                          <small>
+                            Rajon: {getRegionName(elevator.region_id)} · PR:{" "}
+                            {elevator.pr_number || "—"} · PL:{" "}
+                            {elevator.pl_number || "—"} · Výr. č.:{" "}
+                            {elevator.serial_number || "—"}
+                          </small>
+                        </button>
+                      ))}
                     </div>
                   )}
 
@@ -1143,6 +1160,12 @@ export default function FaultsPage() {
                       >
                         Změnit
                       </button>
+                    </div>
+                  )}
+
+                  {elevatorQuery && !form.elevator_id && (
+                    <div className="suggest-empty">
+                      Nemusíš nic vybírat — uloží se přesně napsaný text.
                     </div>
                   )}
                 </div>
@@ -1385,7 +1408,7 @@ export default function FaultsPage() {
               )}
             </div>
 
-            <h2>{getElevatorLabel(fault.elevator_id)}</h2>
+            <h2>{getFaultElevatorLabel(fault)}</h2>
 
             <p>{fault.description}</p>
 
