@@ -21,6 +21,7 @@ type Profile = {
   primary_region_id: string | null;
   can_do_inspections: boolean;
   active: boolean;
+  calendar_color: string;
 };
 
 type Region = {
@@ -44,6 +45,7 @@ type NewUserForm = {
   primary_region_id: string;
   can_do_inspections: boolean;
   active: boolean;
+  calendar_color: string;
 };
 
 const roleLabels: Record<ProfileRole, string> = {
@@ -63,6 +65,7 @@ const emptyNewUserForm: NewUserForm = {
   primary_region_id: "",
   can_do_inspections: false,
   active: true,
+  calendar_color: "#3478F6",
 };
 
 const navigationItems = [
@@ -210,7 +213,7 @@ export default function TechniciansPage() {
       const { data: currentProfileData } = await supabase
         .from("profiles")
         .select(
-          "id, email, full_name, phone, role, primary_region_id, can_do_inspections, active"
+          "id, email, full_name, phone, role, primary_region_id, can_do_inspections, active, calendar_color"
         )
         .eq("id", user.id)
         .maybeSingle();
@@ -221,7 +224,7 @@ export default function TechniciansPage() {
     const { data: profilesData, error: profilesError } = await supabase
       .from("profiles")
       .select(
-        "id, email, full_name, phone, role, primary_region_id, can_do_inspections, active"
+        "id, email, full_name, phone, role, primary_region_id, can_do_inspections, active, calendar_color"
       )
       .order("full_name", { ascending: true });
 
@@ -377,6 +380,7 @@ export default function TechniciansPage() {
         primary_region_id: newUserForm.primary_region_id || null,
         can_do_inspections: newUserForm.can_do_inspections,
         active: newUserForm.active,
+        calendar_color: newUserForm.calendar_color,
         secondary_region_ids: newUserSecondaryRegionIds.filter(
           (regionId) => regionId !== newUserForm.primary_region_id
         ),
@@ -480,6 +484,7 @@ export default function TechniciansPage() {
       primary_region_id: editingProfile.primary_region_id || null,
       can_do_inspections: editingProfile.can_do_inspections,
       active: editingProfile.active,
+      calendar_color: editingProfile.calendar_color,
       updated_at: new Date().toISOString(),
     };
 
@@ -842,6 +847,24 @@ export default function TechniciansPage() {
                 />
               </Field>
 
+              <Field label="Barva v kalendáři">
+                <div style={styles.colorField}>
+                  <input
+                    type="color"
+                    value={newUserForm.calendar_color}
+                    onChange={(event) =>
+                      setNewUserForm({
+                        ...newUserForm,
+                        calendar_color: event.target.value.toUpperCase(),
+                      })
+                    }
+                    style={styles.colorInput}
+                    aria-label="Barva zaměstnance v kalendáři"
+                  />
+                  <span style={styles.colorCode}>{newUserForm.calendar_color}</span>
+                </div>
+              </Field>
+
               <Field label="Role">
                 {isAdmin ? (
                   <select
@@ -1060,6 +1083,24 @@ export default function TechniciansPage() {
                   placeholder="+420..."
                   style={styles.input}
                 />
+              </Field>
+
+              <Field label="Barva v kalendáři">
+                <div style={styles.colorField}>
+                  <input
+                    type="color"
+                    value={editingProfile.calendar_color}
+                    onChange={(event) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        calendar_color: event.target.value.toUpperCase(),
+                      })
+                    }
+                    style={styles.colorInput}
+                    aria-label="Barva zaměstnance v kalendáři"
+                  />
+                  <span style={styles.colorCode}>{editingProfile.calendar_color}</span>
+                </div>
               </Field>
 
               <Field label="Role">
@@ -1300,6 +1341,7 @@ export default function TechniciansPage() {
                     <div>
                       <div style={styles.titleRow}>
                         <h3 style={styles.profileTitle}>
+                          <span style={{ ...styles.profileColor, background: profile.calendar_color }} />
                           {profile.full_name || profile.email}
                         </h3>
 
@@ -1361,6 +1403,7 @@ export default function TechniciansPage() {
                       label="Revize"
                       value={profile.can_do_inspections ? "Ano" : "Ne"}
                     />
+                    <Detail label="Barva v kalendáři" value={profile.calendar_color} />
                   </div>
                 </article>
               ))}
@@ -1765,6 +1808,33 @@ const styles: Record<string, CSSProperties> = {
     outline: "none",
   },
 
+  colorField: {
+    minHeight: 44,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    background: "#020617",
+    border: "1px solid #334155",
+    borderRadius: 12,
+    padding: "6px 10px",
+  },
+
+  colorInput: {
+    width: 48,
+    height: 34,
+    padding: 2,
+    border: "1px solid #475569",
+    borderRadius: 9,
+    background: "transparent",
+    cursor: "pointer",
+  },
+
+  colorCode: {
+    color: "#e2e8f0",
+    fontWeight: 850,
+    letterSpacing: "0.04em",
+  },
+
   disabledInput: {
     width: "100%",
     background: "#0f172a",
@@ -1882,6 +1952,17 @@ const styles: Record<string, CSSProperties> = {
     margin: 0,
     fontSize: 19,
     fontWeight: 950,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  profileColor: {
+    width: 12,
+    height: 12,
+    flex: "0 0 12px",
+    borderRadius: 999,
+    boxShadow: "0 0 0 2px rgba(255,255,255,.15)",
   },
 
   profileEmail: {
