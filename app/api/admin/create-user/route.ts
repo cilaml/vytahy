@@ -17,6 +17,7 @@ type CreateUserPayload = {
   primary_region_id: string | null;
   can_do_inspections: boolean;
   active: boolean;
+  calendar_color: string;
   secondary_region_ids: string[];
 };
 
@@ -145,6 +146,9 @@ export async function POST(request: NextRequest) {
   const primaryRegionId = payload.primary_region_id || null;
   const canDoInspections = Boolean(payload.can_do_inspections);
   const active = Boolean(payload.active);
+  const calendarColor = /^#[0-9A-Fa-f]{6}$/.test(payload.calendar_color ?? "")
+    ? payload.calendar_color.toUpperCase()
+    : "#3478F6";
 
   const secondaryRegionIds = Array.isArray(payload.secondary_region_ids)
     ? payload.secondary_region_ids.filter(Boolean)
@@ -203,6 +207,7 @@ export async function POST(request: NextRequest) {
       primary_region_id: primaryRegionId,
       can_do_inspections: canDoInspections,
       active,
+      calendar_color: calendarColor,
       updated_at: new Date().toISOString(),
     });
 

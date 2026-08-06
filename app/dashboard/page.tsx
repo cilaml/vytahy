@@ -27,6 +27,7 @@ type Profile = {
   role: UserRole;
   active: boolean;
   can_do_inspections: boolean;
+  calendar_color: string;
 };
 
 type Elevator = {
@@ -231,12 +232,12 @@ export default function DashboardPage() {
       await Promise.all([
         supabase
           .from("profiles")
-          .select("id,email,full_name,role,active,can_do_inspections")
+          .select("id,email,full_name,role,active,can_do_inspections,calendar_color")
           .eq("id", authData.user.id)
           .maybeSingle(),
         supabase
           .from("profiles")
-          .select("id,email,full_name,role,active,can_do_inspections")
+          .select("id,email,full_name,role,active,can_do_inspections,calendar_color")
           .eq("active", true)
           .order("full_name", { ascending: true }),
         supabase
@@ -379,15 +380,27 @@ export default function DashboardPage() {
     return elevators.find((elevator) => elevator.id === action.elevator_id) ?? null;
   }
 
-  function getActionAssignees(actionId: string) {
+  function getActionProfiles(actionId: string) {
     const profileIds = assignees
       .filter((item) => item.planned_action_id === actionId)
       .sort((a, b) => Number(b.is_lead) - Number(a.is_lead))
       .map((item) => item.profile_id);
 
     return profileIds
-      .map((id) => profiles.find((item) => item.id === id)?.full_name)
-      .filter((value): value is string => Boolean(value));
+      .map((id) => profiles.find((item) => item.id === id))
+      .filter((value): value is Profile => Boolean(value));
+  }
+
+  function getActionAssignees(actionId: string) {
+    return getActionProfiles(actionId).map((item) => item.full_name);
+  }
+
+  function getActionColor(action: PlannedAction) {
+    const colors = [...new Set(getActionProfiles(action.id).map((item) => item.calendar_color))];
+    if (colors.length === 0) return actionColors[action.action_type];
+    if (colors.length === 1) return colors[0];
+    const step = 100 / colors.length;
+    return `linear-gradient(90deg, ${colors.map((color, index) => `${color} ${index * step}% ${(index + 1) * step}%`).join(", ")})`;
   }
 
   function technicianStatus(technician: Profile) {
@@ -515,7 +528,7 @@ export default function DashboardPage() {
                     <span className="vd-day-number">{day.getDate()}</span>
                     <span className="vd-day-dots">
                       {dayActions.slice(0, 4).map((action) => (
-                        <i key={action.id} style={{ background: actionColors[action.action_type] }} />
+                        <i key={action.id} style={{ background: getActionColor(action) }} />
                       ))}
                     </span>
                   </button>
@@ -539,7 +552,7 @@ export default function DashboardPage() {
                     const navigationAddress = action.address || elevator?.address || "";
                     return (
                       <article className="vd-agenda-row" key={action.id}>
-                        <i className="vd-agenda-dot" style={{ background: actionColors[action.action_type] }} />
+                        <i className="vd-agenda-dot" style={{ background: getActionColor(action) }} />
                         <div className="vd-agenda-time">
                           {action.all_day ? "Celý den" : `${formatTime(action.starts_at)} – ${formatTime(action.ends_at)}`}
                         </div>
