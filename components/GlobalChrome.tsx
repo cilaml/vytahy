@@ -258,9 +258,11 @@ export default function GlobalChrome() {
       .filter(Boolean)
       .join("\n");
 
-    const { data, error } = await supabase
+    const actionId = crypto.randomUUID();
+    const { error } = await supabase
       .from("planned_actions")
       .insert({
+        id: actionId,
         title: form.title.trim(),
         action_type: form.action_type,
         starts_at: startsAt.toISOString(),
@@ -269,12 +271,11 @@ export default function GlobalChrome() {
         description: description || null,
         elevator_id: selectedElevatorId || null,
         created_by: currentUser.id,
-      })
-      .select("id")
-      .single();
+        visibility: "all",
+      });
 
-    if (error || !data) {
-      setActionMessage(`Akci se nepovedlo uložit: ${error?.message ?? "neznámá chyba"}`);
+    if (error) {
+      setActionMessage(`Akci se nepovedlo uložit: ${error.message}`);
       setSaving(false);
       return;
     }
@@ -282,7 +283,7 @@ export default function GlobalChrome() {
     if (selectedEmployees.length > 0) {
       const { error: assigneeError } = await supabase.from("planned_action_assignees").insert(
         selectedEmployees.map((profileId, index) => ({
-          planned_action_id: data.id,
+          planned_action_id: actionId,
           profile_id: profileId,
           is_lead: index === 0,
         }))
