@@ -244,6 +244,14 @@ export default function GlobalChrome() {
     }
 
     const supabase = createClient();
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    const currentUser = authData.user;
+    if (authError || !currentUser) {
+      setActionMessage("Přihlášení vypršelo. Obnov stránku a přihlas se znovu.");
+      setSaving(false);
+      return;
+    }
+
     const customElevatorText = !selectedElevatorId ? elevatorQuery.trim() : "";
     const address = form.address.trim() || customElevatorText;
     const description = [customElevatorText ? `Výtah mimo databázi: ${customElevatorText}` : "", form.description.trim()]
@@ -260,7 +268,7 @@ export default function GlobalChrome() {
         address,
         description: description || null,
         elevator_id: selectedElevatorId || null,
-        created_by: profile?.id ?? null,
+        created_by: currentUser.id,
       })
       .select("id")
       .single();
