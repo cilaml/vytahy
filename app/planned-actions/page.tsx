@@ -294,17 +294,22 @@ export default function PlannedActionsPage() {
         return;
       }
     } else {
-      const { data, error } = await supabase
-        .from("planned_actions")
-        .insert({ ...payload, created_by: currentUserId })
-        .select("id")
-        .single();
-      if (error || !data) {
-        setMessage(`Akci se nepovedlo uložit: ${error?.message ?? "neznámá chyba"}`);
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        setMessage("Přihlášení vypršelo. Obnov stránku a přihlas se znovu.");
         setSaving(false);
         return;
       }
-      actionId = data.id;
+
+      actionId = crypto.randomUUID();
+      const { error } = await supabase
+        .from("planned_actions")
+        .insert({ id: actionId, ...payload, created_by: authData.user.id });
+      if (error) {
+        setMessage(`Akci se nepovedlo uložit: ${error.message}`);
+        setSaving(false);
+        return;
+      }
     }
 
     if (!actionId) {
