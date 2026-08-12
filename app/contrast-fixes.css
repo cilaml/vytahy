@@ -181,6 +181,10 @@ body,
   border-color: #bdccd5 !important;
 }
 
+.profile-install-button > span:first-child {
+  color: #ffffff !important;
+}
+
 /* Staré formuláře měly uvnitř ještě tmavou paletu. */
 .app-content-root .suggestions,
 .app-content-root .suggest-item,

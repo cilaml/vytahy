@@ -19,6 +19,10 @@ type FaultStatus =
 type ActionType = "servis" | "porucha" | "montaz" | "oprava" | "op" | "oz" | "ip" | "jine";
 type ActionStatus = "planovano" | "potvrzeno" | "na_ceste" | "rozpracovano" | "hotovo" | "zruseno";
 type ToolStatus = "sklad" | "vydano" | "oprava" | "vyrazeno";
+type CalendarView = "month" | "week" | "day";
+
+const OPEN_CALENDAR_ACTION_EVENT = "vd:open-calendar-action";
+const calendarHours = Array.from({ length: 15 }, (_, index) => index + 6);
 
 type Profile = {
   id: string;
@@ -210,11 +214,24 @@ export default function DashboardPage() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()));
+  const [calendarView, setCalendarView] = useState<CalendarView>("month");
+  const [touchCalendar, setTouchCalendar] = useState(false);
 
   useEffect(() => {
     void loadDashboard();
+  }, []);
+
+  useEffect(() => {
+    const pointer = window.matchMedia("(pointer: coarse)");
+    const updatePointer = () => setTouchCalendar(pointer.matches);
+    updatePointer();
+    pointer.addEventListener("change", updatePointer);
+    return () => pointer.removeEventListener("change", updatePointer);
   }, []);
 
   async function loadDashboard() {
@@ -354,6 +371,11 @@ export default function DashboardPage() {
     return Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
   }, [calendarMonth]);
 
+  const weekDays = useMemo(() => {
+    const first = startOfWeek(selectedDate);
+    return Array.from({ length: 7 }, (_, index) => addDays(first, index));
+  }, [selectedDate]);
+
   const actionsByDay = useMemo(() => {
     const map = new Map<string, PlannedAction[]>();
     for (const action of actions) {
@@ -417,9 +439,45 @@ export default function DashboardPage() {
 
   function goToToday() {
     const today = startOfDay(new Date());
-    setCalendarMonth(today);
+    setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
     setSelectedDate(today);
   }
+
+  function navigateCalendar(direction: -1 | 1) {
+    if (calendarView === "month") {
+      const nextMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + direction, 1);
+      setCalendarMonth(nextMonth);
+      return;
+    }
+
+    const nextDate = addDays(selectedDate, calendarView === "week" ? 7 * direction : direction);
+    setSelectedDate(nextDate);
+    setCalendarMonth(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1));
+  }
+
+  function changeCalendarView(view: CalendarView) {
+    setCalendarView(view);
+    setCalendarMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+  }
+
+  function openCalendarAction(date: Date, start = "08:00") {
+    window.dispatchEvent(new CustomEvent(OPEN_CALENDAR_ACTION_EVENT, {
+      detail: { date: dateKey(date), start },
+    }));
+  }
+
+  function selectCalendarDate(date: Date, start = "08:00") {
+    const selected = startOfDay(date);
+    setSelectedDate(selected);
+    setCalendarMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
+    if (touchCalendar) openCalendarAction(selected, start);
+  }
+
+  const calendarLabel = calendarView === "month"
+    ? `${monthNames[calendarMonth.getMonth()]} ${calendarMonth.getFullYear()}`
+    : calendarView === "week"
+      ? `${weekDays[0].toLocaleDateString("cs-CZ", { day: "numeric", month: "short" })} – ${weekDays[6].toLocaleDateString("cs-CZ", { day: "numeric", month: "short", year: "numeric" })}`
+      : capitalise(selectedDate.toLocaleDateString("cs-CZ", { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
 
   if (loading) {
     return (
@@ -487,54 +545,127 @@ export default function DashboardPage() {
               <div>
                 <h2>Kalendář</h2>
                 <div className="vd-month-controls">
-                  <button onClick={() => setCalendarMonth(addMonths(calendarMonth, -1))} aria-label="Předchozí měsíc">
+                  <button onClick={() => navigateCalendar(-1)} aria-label="Předchozí období">
                     <Icon name="chevron-left" size={18} />
                   </button>
                   <button className="vd-today-button" onClick={goToToday}>Dnes</button>
-                  <button onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))} aria-label="Další měsíc">
+                  <button onClick={() => navigateCalendar(1)} aria-label="Další období">
                     <Icon name="chevron-right" size={18} />
                   </button>
-                  <strong>{monthNames[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}</strong>
+                  <strong>{calendarLabel}</strong>
                 </div>
               </div>
 
               <div className="vd-calendar-actions">
                 <div className="vd-view-switch">
-                  <button className="active">Měsíc</button>
-                  <button>Týden</button>
-                  <button>Den</button>
+                  <button className={calendarView === "month" ? "active" : ""} onClick={() => changeCalendarView("month")}>Měsíc</button>
+                  <button className={calendarView === "week" ? "active" : ""} onClick={() => changeCalendarView("week")}>Týden</button>
+                  <button className={calendarView === "day" ? "active" : ""} onClick={() => changeCalendarView("day")}>Den</button>
                 </div>
-                <a className="vd-primary-button" href="/planned-actions">
-                  <Icon name="plus" size={17} /> Nová akce
-                </a>
+                <span className="vd-calendar-hint">{touchCalendar ? "Klepni na den nebo čas a přidej práci" : "Dvojklikem na den nebo čas přidáš práci"}</span>
               </div>
             </div>
 
-            <div className="vd-calendar">
-              {weekdayShort.map((day) => <div className="vd-weekday" key={day}>{day}</div>)}
-              {calendarDays.map((day) => {
-                const dayActions = actionsByDay.get(dateKey(day)) ?? [];
-                const outside = day.getMonth() !== calendarMonth.getMonth();
-                const selected = sameDay(day, selectedDate);
-                const today = sameDay(day, now);
+            {calendarView === "month" && (
+              <div className="vd-calendar">
+                {weekdayShort.map((day) => <div className="vd-weekday" key={day}>{day}</div>)}
+                {calendarDays.map((day) => {
+                  const dayActions = actionsByDay.get(dateKey(day)) ?? [];
+                  const outside = day.getMonth() !== calendarMonth.getMonth();
+                  const selected = sameDay(day, selectedDate);
+                  const today = sameDay(day, now);
 
-                return (
-                  <button
-                    type="button"
-                    className={`vd-day ${outside ? "outside" : ""} ${selected ? "selected" : ""} ${today ? "today" : ""}`}
-                    key={dateKey(day)}
-                    onClick={() => setSelectedDate(startOfDay(day))}
-                  >
-                    <span className="vd-day-number">{day.getDate()}</span>
-                    <span className="vd-day-dots">
-                      {dayActions.slice(0, 4).map((action) => (
-                        <i key={action.id} style={{ background: getActionColor(action) }} />
-                      ))}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                  return (
+                    <button
+                      type="button"
+                      className={`vd-day ${outside ? "outside" : ""} ${selected ? "selected" : ""} ${today ? "today" : ""}`}
+                      key={dateKey(day)}
+                      onClick={() => selectCalendarDate(day)}
+                      onDoubleClick={() => { if (!touchCalendar) openCalendarAction(day); }}
+                      title={touchCalendar ? "Klepnutím přidat práci" : "Dvojklikem přidat práci"}
+                    >
+                      <span className="vd-day-number">{day.getDate()}</span>
+                      <span className="vd-day-dots">
+                        {dayActions.slice(0, 4).map((action) => (
+                          <i key={action.id} style={{ background: getActionColor(action) }} />
+                        ))}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {calendarView === "week" && (
+              <div className="vd-week-view">
+                {weekDays.map((day) => {
+                  const dayActions = [...(actionsByDay.get(dateKey(day)) ?? [])].sort(
+                    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+                  );
+                  return (
+                    <button
+                      type="button"
+                      className={`vd-week-day ${sameDay(day, selectedDate) ? "selected" : ""} ${sameDay(day, now) ? "today" : ""}`}
+                      key={dateKey(day)}
+                      onClick={() => selectCalendarDate(day)}
+                      onDoubleClick={() => { if (!touchCalendar) openCalendarAction(day); }}
+                    >
+                      <span className="vd-week-day-name">{day.toLocaleDateString("cs-CZ", { weekday: "short" })}</span>
+                      <strong>{day.getDate()}</strong>
+                      <span className="vd-week-events">
+                        {dayActions.slice(0, 5).map((action) => (
+                          <span className="vd-week-event" key={action.id}>
+                            <i style={{ background: getActionColor(action) }} />
+                            <b>{action.all_day ? "Celý den" : formatTime(action.starts_at)}</b>
+                            <em>{action.title}</em>
+                          </span>
+                        ))}
+                        {dayActions.length === 0 && <small>Bez akcí</small>}
+                        {dayActions.length > 5 && <small>+{dayActions.length - 5} dalších</small>}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {calendarView === "day" && (
+              <div className="vd-day-view">
+                {selectedActions.filter((action) => action.all_day).map((action) => (
+                  <div className="vd-all-day-action" key={action.id}>
+                    <i style={{ background: getActionColor(action) }} />
+                    <strong>Celý den</strong>
+                    <span>{action.title}</span>
+                  </div>
+                ))}
+                {calendarHours.map((hour) => {
+                  const start = `${String(hour).padStart(2, "0")}:00`;
+                  const slotActions = selectedActions.filter(
+                    (action) => !action.all_day && new Date(action.starts_at).getHours() === hour
+                  );
+                  return (
+                    <button
+                      type="button"
+                      className="vd-time-slot"
+                      key={start}
+                      onClick={() => { if (touchCalendar) openCalendarAction(selectedDate, start); }}
+                      onDoubleClick={() => { if (!touchCalendar) openCalendarAction(selectedDate, start); }}
+                    >
+                      <span className="vd-time-label">{start}</span>
+                      <span className="vd-time-actions">
+                        {slotActions.map((action) => (
+                          <span className="vd-time-action" key={action.id}>
+                            <i style={{ background: getActionColor(action) }} />
+                            <strong>{action.title}</strong>
+                            <small>{formatTime(action.starts_at)}–{formatTime(action.ends_at)}</small>
+                          </span>
+                        ))}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="vd-agenda">
               <div className="vd-agenda-title">
@@ -616,7 +747,6 @@ export default function DashboardPage() {
                 <QuickAction href="/faults" icon="alert" tone="red" label="Nová porucha" />
                 <QuickAction href="/service" icon="wrench" tone="blue" label="Nový servisní zásah" />
                 <QuickAction href="/inspections" icon="clipboard" tone="green" label="Odborná prohlídka / zkouška" />
-                <QuickAction href="/planned-actions" icon="calendar" tone="purple" label="Plánovaná akce" />
               </div>
             </section>
 
@@ -757,6 +887,7 @@ function DashboardStyles() {
       .vd-view-switch { display: flex; padding: 3px; border: 1px solid #dfe7ec; border-radius: 9px; background: #f8fafb; }
       .vd-view-switch button { padding: 7px 10px; border: 0; border-radius: 6px; background: transparent; color: #718194; font-size: 11px; cursor: pointer; }
       .vd-view-switch button.active { background: #e7f6ed; color: #067c3d; font-weight: 800; }
+      .vd-calendar-hint { max-width: 190px; color: #718194; font-size: 10px; line-height: 1.35; text-align: right; }
       .vd-primary-button, .vd-secondary-button, .vd-navigate { text-decoration: none; }
       .vd-primary-button { height: 36px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; border-radius: 9px; background: #082a49; color: white; font-size: 12px; font-weight: 800; }
       .vd-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
@@ -770,6 +901,33 @@ function DashboardStyles() {
       .vd-day.today .vd-day-number { background: #082a49; color: white; }
       .vd-day-dots { min-height: 7px; display: flex; align-items: center; justify-content: center; gap: 4px; }
       .vd-day-dots i { width: 6px; height: 6px; border-radius: 999px; }
+      .vd-week-view { display: grid; grid-template-columns: repeat(7, minmax(130px, 1fr)); overflow-x: auto; border-bottom: 1px solid #e6ecef; }
+      .vd-week-day { min-height: 255px; padding: 12px 9px; display: flex; flex-direction: column; align-items: stretch; gap: 5px; border: 0; border-right: 1px solid #edf1f3; background: #fff; color: #415568; text-align: left; cursor: pointer; }
+      .vd-week-day:last-child { border-right: 0; }
+      .vd-week-day:hover { background: #f8fbf9; }
+      .vd-week-day.selected { background: #f4fbf7; box-shadow: inset 0 0 0 2px #9ad7b5; }
+      .vd-week-day-name { color: #8190a0; font-size: 10px; font-weight: 850; text-transform: uppercase; }
+      .vd-week-day > strong { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 50%; color: #1a3042; font-size: 14px; }
+      .vd-week-day.today > strong { background: #082a49; color: #fff; }
+      .vd-week-events { display: grid; gap: 6px; margin-top: 7px; }
+      .vd-week-event { min-width: 0; padding: 7px; display: grid; grid-template-columns: 7px auto minmax(0, 1fr); align-items: center; gap: 5px; border: 1px solid #e2e9ed; border-radius: 8px; background: #fff; }
+      .vd-week-event i { width: 7px; height: 7px; border-radius: 50%; }
+      .vd-week-event b { color: #52697b; font-size: 9px; }
+      .vd-week-event em { overflow: hidden; color: #173047; font-size: 9px; font-style: normal; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+      .vd-week-events small { padding: 8px 4px; color: #8a98a7; font-size: 9px; text-align: center; }
+      .vd-day-view { max-height: 560px; overflow-y: auto; border-bottom: 1px solid #e6ecef; background: #fff; }
+      .vd-all-day-action { min-height: 45px; padding: 8px 14px; display: grid; grid-template-columns: 8px 72px 1fr; align-items: center; gap: 9px; border-bottom: 1px solid #edf1f3; background: #f6faf8; }
+      .vd-all-day-action i { width: 8px; height: 8px; border-radius: 50%; }
+      .vd-all-day-action strong { color: #52697b; font-size: 10px; }
+      .vd-all-day-action span { color: #173047; font-size: 11px; font-weight: 800; }
+      .vd-time-slot { width: 100%; min-height: 52px; padding: 0; display: grid; grid-template-columns: 74px 1fr; align-items: stretch; border: 0; border-bottom: 1px solid #edf1f3; background: #fff; color: #173047; text-align: left; cursor: pointer; }
+      .vd-time-slot:hover { background: #f8fbf9; }
+      .vd-time-label { padding: 13px 12px; border-right: 1px solid #edf1f3; color: #718194; font-size: 10px; font-weight: 800; }
+      .vd-time-actions { min-width: 0; padding: 5px 8px; display: grid; gap: 4px; }
+      .vd-time-action { min-width: 0; padding: 7px 9px; display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 7px; border: 1px solid #dce8e1; border-radius: 8px; background: #f2f9f5; }
+      .vd-time-action i { width: 7px; height: 7px; border-radius: 50%; }
+      .vd-time-action strong { overflow: hidden; color: #173047; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+      .vd-time-action small { color: #718194; font-size: 9px; }
       .vd-agenda { padding: 18px 20px 20px; }
       .vd-agenda-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
       .vd-agenda-title h3 { margin: 0; color: #1a3042; font-size: 14px; font-weight: 850; }
@@ -819,8 +977,8 @@ function DashboardStyles() {
       .vd-tools-overview strong { color: #183045; font-size: 12px; }
       .vd-tools-overview strong.attention { color: #d98223; }
       @media (max-width: 1250px) { .vd-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .vd-dashboard-grid { grid-template-columns: 1fr; } .vd-right-column { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-      @media (max-width: 900px) { .vd-topbar { padding: 14px 16px; } .vd-page { padding: 16px; } .vd-search { display: none; } .vd-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .vd-right-column { grid-template-columns: 1fr; } .vd-calendar-header { align-items: flex-start; } .vd-calendar-actions { align-items: flex-end; flex-direction: column; } .vd-view-switch { display: none; } .vd-agenda-row { grid-template-columns: 8px 78px minmax(0, 1fr) auto; } .vd-agenda-people, .vd-agenda-elevator, .vd-more { display: none; } }
-      @media (max-width: 600px) { .vd-greeting h1 { font-size: 20px; } .vd-topbar-actions { gap: 6px; } .vd-icon-button { width: 38px; height: 38px; } .vd-avatar { width: 39px; height: 39px; } .vd-stats { grid-template-columns: 1fr; } .vd-summary-card { min-height: 84px; } .vd-calendar-header { display: grid; } .vd-calendar-actions { align-items: stretch; } .vd-primary-button { justify-content: center; } .vd-day { min-height: 58px; padding: 5px; } .vd-day-number { width: 22px; height: 22px; font-size: 10px; } .vd-agenda-row { grid-template-columns: 7px 66px minmax(0, 1fr); } .vd-navigate { display: none; } }
+      @media (max-width: 900px) { .vd-topbar { padding: 14px 16px; } .vd-page { padding: 16px; } .vd-search { display: none; } .vd-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .vd-right-column { grid-template-columns: 1fr; } .vd-calendar-header { align-items: flex-start; } .vd-calendar-actions { align-items: flex-end; flex-direction: column; } .vd-agenda-row { grid-template-columns: 8px 78px minmax(0, 1fr) auto; } .vd-agenda-people, .vd-agenda-elevator, .vd-more { display: none; } }
+      @media (max-width: 600px) { .vd-greeting h1 { font-size: 20px; } .vd-topbar-actions { gap: 6px; } .vd-icon-button { width: 38px; height: 38px; } .vd-avatar { width: 39px; height: 39px; } .vd-stats { grid-template-columns: 1fr; } .vd-summary-card { min-height: 84px; } .vd-calendar-header { display: grid; } .vd-calendar-actions { align-items: stretch; } .vd-view-switch { width: 100%; } .vd-view-switch button { flex: 1; } .vd-calendar-hint { max-width: none; text-align: left; } .vd-primary-button { justify-content: center; } .vd-day { min-height: 58px; padding: 5px; } .vd-day-number { width: 22px; height: 22px; font-size: 10px; } .vd-agenda-row { grid-template-columns: 7px 66px minmax(0, 1fr); } .vd-navigate { display: none; } .vd-week-view { grid-template-columns: repeat(7, 125px); } .vd-week-day { min-height: 220px; } .vd-time-slot { grid-template-columns: 58px 1fr; } .vd-time-label { padding-left: 8px; padding-right: 8px; } }
     `}</style>
   );
 }
