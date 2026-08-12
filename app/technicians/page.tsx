@@ -1661,9 +1661,9 @@ const styles: Record<string, CSSProperties> = {
   },
 
   secondaryButton: {
-    background: "#1e293b",
-    color: "#f8fafc",
-    border: "1px solid #334155",
+    background: "#f7fafb",
+    color: "#1e4058",
+    border: "1px solid #b7c7d0",
     borderRadius: 12,
     padding: "11px 15px",
     fontWeight: 900,
@@ -1671,7 +1671,7 @@ const styles: Record<string, CSSProperties> = {
   },
 
   saveButton: {
-    background: "#2563eb",
+    background: "#078a45",
     color: "white",
     border: 0,
     borderRadius: 12,
@@ -1681,17 +1681,17 @@ const styles: Record<string, CSSProperties> = {
   },
 
   errorBox: {
-    background: "#450a0a",
-    border: "1px solid #7f1d1d",
-    color: "#fecaca",
+    background: "#fff1f1",
+    border: "1px solid #efb8b8",
+    color: "#a92b2b",
     padding: 13,
     borderRadius: 14,
   },
 
   successBox: {
-    background: "#052e16",
-    border: "1px solid #166534",
-    color: "#bbf7d0",
+    background: "#eef9f2",
+    border: "1px solid #b9dec6",
+    color: "#08783d",
     padding: 13,
     borderRadius: 14,
   },
@@ -1703,10 +1703,12 @@ const styles: Record<string, CSSProperties> = {
   },
 
   card: {
-    background: "#0f172a",
-    border: "1px solid #1e293b",
+    background: "#ffffff",
+    border: "1px solid #cdd9e0",
     borderRadius: 24,
     padding: 22,
+    color: "#10273a",
+    boxShadow: "0 12px 32px rgba(10, 38, 57, 0.09)",
   },
 
   cardHeader: {
@@ -1725,17 +1727,17 @@ const styles: Record<string, CSSProperties> = {
   },
 
   cardDescription: {
-    color: "#93a4bd",
+    color: "#52697b",
     margin: "5px 0 0",
     fontSize: 14,
   },
 
   emptyInner: {
-    background: "#020617",
-    border: "1px dashed #334155",
+    background: "#f8fafb",
+    border: "1px dashed #b7c7d0",
     borderRadius: 15,
     padding: 17,
-    color: "#cbd5e1",
+    color: "#52697b",
   },
 
   statGrid: {
@@ -1786,13 +1788,13 @@ const styles: Record<string, CSSProperties> = {
 
   formSectionTitle: {
     margin: "18px 0 12px",
-    color: "#f8fafc",
+    color: "#082a49",
     fontSize: 18,
     fontWeight: 950,
   },
 
   fieldLabel: {
-    color: "#cbd5e1",
+    color: "#263f52",
     fontWeight: 800,
     fontSize: 14,
     marginBottom: 7,
@@ -1800,9 +1802,9 @@ const styles: Record<string, CSSProperties> = {
 
   input: {
     width: "100%",
-    background: "#020617",
-    color: "#f8fafc",
-    border: "1px solid #334155",
+    background: "#ffffff",
+    color: "#0b2335",
+    border: "1px solid #aebfca",
     borderRadius: 12,
     padding: 12,
     outline: "none",
@@ -1813,8 +1815,8 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 12,
-    background: "#020617",
-    border: "1px solid #334155",
+    background: "#ffffff",
+    border: "1px solid #aebfca",
     borderRadius: 12,
     padding: "6px 10px",
   },
@@ -1823,23 +1825,23 @@ const styles: Record<string, CSSProperties> = {
     width: 48,
     height: 34,
     padding: 2,
-    border: "1px solid #475569",
+    border: "1px solid #aebfca",
     borderRadius: 9,
     background: "transparent",
     cursor: "pointer",
   },
 
   colorCode: {
-    color: "#e2e8f0",
+    color: "#173047",
     fontWeight: 850,
     letterSpacing: "0.04em",
   },
 
   disabledInput: {
     width: "100%",
-    background: "#0f172a",
-    color: "#94a3b8",
-    border: "1px solid #334155",
+    background: "#eef3f6",
+    color: "#607386",
+    border: "1px solid #c6d3da",
     borderRadius: 12,
     padding: 12,
     outline: "none",
@@ -1853,39 +1855,40 @@ const styles: Record<string, CSSProperties> = {
   },
 
   bigCheckbox: {
-    background: "#020617",
-    border: "1px solid #334155",
+    background: "#f8fafb",
+    border: "1px solid #cdd9e0",
     borderRadius: 15,
     padding: 14,
     display: "flex",
     alignItems: "flex-start",
     gap: 12,
-    color: "#f8fafc",
+    color: "#173047",
   },
 
   secondaryRegionsBox: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
     gap: 9,
-    background: "#020617",
-    border: "1px solid #334155",
+    background: "#f8fafb",
+    border: "1px solid #cdd9e0",
     borderRadius: 15,
     padding: 14,
   },
 
   regionCheckbox: {
-    background: "#0f172a",
-    border: "1px solid #1e293b",
+    background: "#ffffff",
+    border: "1px solid #d5e0e5",
     borderRadius: 12,
     padding: 11,
     display: "flex",
     alignItems: "center",
     gap: 10,
-    color: "#cbd5e1",
+    color: "#315064",
   },
 
   regionCheckboxDisabled: {
-    color: "#64748b",
+    background: "#e8eef2",
+    color: "#718195",
     opacity: 0.7,
   },
 

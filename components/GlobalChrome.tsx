@@ -23,6 +23,10 @@ type NotificationItem = {
 
 type Elevator = { id: string; address: string; label: string };
 type Employee = { id: string; full_name: string; active: boolean };
+type CalendarActionRequest = { date?: string; start?: string };
+
+const OPEN_CALENDAR_ACTION_EVENT = "vd:open-calendar-action";
+const INSTALL_APP_EVENT = "vd:install-app";
 
 const roleLabels: Record<string, string> = {
   admin: "Administrátor",
@@ -53,6 +57,12 @@ function dateKey(date: Date) {
 function initials(value: string) {
   const parts = value.trim().split(/\s+/).filter(Boolean);
   return parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join("") || "U";
+}
+
+function twoHoursAfter(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  const endHours = Math.min((hours || 0) + 2, 23);
+  return `${String(endHours).padStart(2, "0")}:${String(minutes || 0).padStart(2, "0")}`;
 }
 
 export default function GlobalChrome() {
@@ -97,6 +107,39 @@ export default function GlobalChrome() {
     }
     document.addEventListener("mousedown", closeMenus);
     return () => document.removeEventListener("mousedown", closeMenus);
+  }, []);
+
+  useEffect(() => {
+    function openFromCalendar(event: Event) {
+      const detail = (event as CustomEvent<CalendarActionRequest>).detail ?? {};
+      const start = detail.start ?? "08:00";
+      setForm({
+        title: "",
+        action_type: "servis",
+        date: detail.date ?? dateKey(new Date()),
+        start,
+        end: twoHoursAfter(start),
+        address: "",
+        description: "",
+      });
+      setSelectedEmployees([]);
+      setSelectedElevatorId("");
+      setElevatorQuery("");
+      setActionOpen(true);
+      setActionMessage("");
+
+      const supabase = createClient();
+      void Promise.all([
+        supabase.from("elevators").select("id,address,label").eq("status", "aktivni").order("address"),
+        supabase.from("profiles").select("id,full_name,active").eq("active", true).order("full_name"),
+      ]).then(([elevatorResult, employeeResult]) => {
+        setElevators((elevatorResult.data ?? []) as Elevator[]);
+        setEmployees((employeeResult.data ?? []) as Employee[]);
+      });
+    }
+
+    window.addEventListener(OPEN_CALENDAR_ACTION_EVENT, openFromCalendar);
+    return () => window.removeEventListener(OPEN_CALENDAR_ACTION_EVENT, openFromCalendar);
   }, []);
 
   async function loadNotifications() {
@@ -203,18 +246,6 @@ export default function GlobalChrome() {
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.href = "/login";
-  }
-
-  async function openActionModal() {
-    setActionOpen(true);
-    setActionMessage("");
-    const supabase = createClient();
-    const [elevatorResult, employeeResult] = await Promise.all([
-      supabase.from("elevators").select("id,address,label").eq("status", "aktivni").order("address"),
-      supabase.from("profiles").select("id,full_name,active").eq("active", true).order("full_name"),
-    ]);
-    setElevators((elevatorResult.data ?? []) as Elevator[]);
-    setEmployees((employeeResult.data ?? []) as Employee[]);
   }
 
   const elevatorSuggestions = useMemo(() => {
@@ -343,15 +374,22 @@ export default function GlobalChrome() {
           {profileOpen && (
             <section className="global-dropdown profile-dropdown">
               <div className="profile-dropdown-head"><div className="profile-large-avatar">{initials(profile?.full_name || "U")}</div><div><strong>{profile?.full_name || "Uživatel"}</strong><span>{roleLabels[profile?.role ?? ""] ?? profile?.role ?? ""}</span><small>{profile?.email}</small></div></div>
+              <button
+                type="button"
+                className="profile-install-button"
+                onClick={() => {
+                  setProfileOpen(false);
+                  window.dispatchEvent(new Event(INSTALL_APP_EVENT));
+                }}
+              >
+                <span aria-hidden="true">⇩</span>
+                <span><strong>Nainstalovat aplikaci</strong><small>Přidat Výtahy DC do počítače nebo telefonu</small></span>
+              </button>
               <button type="button" className="global-logout" onClick={logout}>Odhlásit se</button>
             </section>
           )}
         </div>
       </div>
-
-      {pathname === "/dashboard" && (
-        <button className="global-calendar-add" type="button" onClick={openActionModal}>＋ Přidat akci do kalendáře</button>
-      )}
 
       {actionOpen && (
         <div className="global-modal-backdrop" onMouseDown={() => setActionOpen(false)}>

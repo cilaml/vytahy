@@ -239,6 +239,53 @@
   font-weight: 950;
 }
 
+.profile-install-button {
+  width: 100%;
+  margin-top: 14px;
+  padding: 11px 12px;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #bcd8c7;
+  border-radius: 11px;
+  background: #eef9f2;
+  color: #173047;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-install-button:hover {
+  background: #e4f5ea;
+  border-color: #8fc4a3;
+}
+
+.profile-install-button > span:first-child {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #079447;
+  color: #fff;
+  font-size: 21px;
+  font-weight: 950;
+}
+
+.profile-install-button > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.profile-install-button strong {
+  font-size: 13px;
+}
+
+.profile-install-button small {
+  line-height: 1.35;
+}
+
 .global-logout {
   width: 100%;
   margin-top: 14px;
@@ -249,6 +296,47 @@
   color: #b62f2f;
   font-weight: 900;
   cursor: pointer;
+}
+
+.pwa-install-notice {
+  position: fixed;
+  z-index: 2500;
+  right: 18px;
+  bottom: 18px;
+  width: min(380px, calc(100vw - 36px));
+  padding: 17px 46px 17px 17px;
+  border: 1px solid #bcd8c7;
+  border-radius: 16px;
+  background: #fff;
+  color: #173047;
+  box-shadow: 0 24px 70px rgba(7, 31, 49, 0.22);
+}
+
+.pwa-install-notice > button {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: #eef3f6;
+  color: #294052;
+  font-size: 21px;
+  cursor: pointer;
+}
+
+.pwa-install-notice > strong {
+  display: block;
+  color: #082a49;
+  font-size: 16px;
+}
+
+.pwa-install-notice > p {
+  margin: 6px 0 0;
+  color: #52697b;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .global-calendar-add {
