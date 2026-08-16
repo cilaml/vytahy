@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAccessControl } from "@/components/AccessControl";
 import { createClient } from "@/lib/supabase/client";
 
 type UserRole =
@@ -143,6 +144,8 @@ const activeStatuses: FaultStatus[] = [
 ];
 
 export default function FaultsPage() {
+  const { canManage } = useAccessControl();
+  const canManageFaults = canManage("faults");
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
 
   const [faults, setFaults] = useState<Fault[]>([]);
@@ -161,7 +164,7 @@ export default function FaultsPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "active" | "done" | "archive" | "all"
+    "active" | "done" | "archive"
   >("active");
   const [regionFilter, setRegionFilter] = useState("");
   const [technicianFilter, setTechnicianFilter] = useState("");
@@ -174,10 +177,14 @@ export default function FaultsPage() {
 
   const [message, setMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
 
   const isAdminOrLead =
     currentProfile?.role === "admin" ||
     currentProfile?.role === "vedouci_technik";
+  const isDispatcher =
+    isAdminOrLead || currentProfile?.role === "sekretariat";
 
   useEffect(() => {
     loadData();
@@ -274,13 +281,10 @@ export default function FaultsPage() {
   function isFaultVisibleForUser(fault: Fault) {
     if (!currentProfile) return false;
 
-    if (isAdminOrLead) return true;
+    if (isDispatcher) return true;
 
     if (isFaultAssignedToMe(fault)) return true;
-
-    const userRegionIds = getUserRegionIds();
-
-    return fault.region_id ? userRegionIds.includes(fault.region_id) : false;
+    return fault.created_by === currentProfile.id;
   }
 
   const visibleFaults = useMemo(() => {
@@ -291,7 +295,7 @@ export default function FaultsPage() {
     const text = elevatorQuery.trim().toLowerCase();
 
     const visibleElevators =
-      isAdminOrLead || !currentProfile
+      isDispatcher || !currentProfile
         ? elevators
         : elevators.filter((elevator) => {
             const userRegionIds = getUserRegionIds();
@@ -341,13 +345,11 @@ export default function FaultsPage() {
       const elevator = getElevator(fault.elevator_id);
 
       const matchesStatus =
-        statusFilter === "all"
-          ? true
-          : statusFilter === "active"
-            ? activeStatuses.includes(fault.status)
-            : statusFilter === "done"
-              ? fault.status === "hotovo"
-              : fault.status === "archivovano";
+        statusFilter === "active"
+          ? activeStatuses.includes(fault.status)
+          : statusFilter === "done"
+            ? fault.status === "hotovo"
+            : fault.status === "archivovano";
 
       const matchesRegion = regionFilter
         ? fault.region_id === regionFilter
@@ -428,7 +430,15 @@ export default function FaultsPage() {
   ).length;
 
   const myFaultsCount = visibleFaults.filter((fault) =>
-    isFaultAssignedToMe(fault)
+    isFaultAssignedToMe(fault) || fault.created_by === currentProfile?.id
+  ).length;
+
+  const doneFaultsCount = visibleFaults.filter(
+    (fault) => fault.status === "hotovo"
+  ).length;
+
+  const archivedFaultsCount = visibleFaults.filter(
+    (fault) => fault.status === "archivovano"
   ).length;
 
   async function loadData() {
@@ -549,6 +559,10 @@ export default function FaultsPage() {
   }
 
   function startCreate(priority?: FaultPriority) {
+    if (!canManageFaults) {
+      setMessage("Máš přístup k poruchám jen pro čtení.");
+      return;
+    }
     setMessage("");
     setSuccessMessage("");
     setEditingFaultId(null);
@@ -557,6 +571,7 @@ export default function FaultsPage() {
     setForm({
       ...emptyForm,
       priority: priority ?? "bezna",
+      main_technician_id: isDispatcher ? "" : currentProfile?.id ?? "",
     });
 
     setShowForm(true);
@@ -568,6 +583,10 @@ export default function FaultsPage() {
   }
 
   function startEdit(fault: Fault) {
+    if (!canManageFaults || !isDispatcher) {
+      setMessage("Celé údaje a přiřazení poruchy může upravit jen dispečink.");
+      return;
+    }
     setMessage("");
     setSuccessMessage("");
 
@@ -713,13 +732,22 @@ export default function FaultsPage() {
       return;
     }
 
+    if (editingFaultId && !isDispatcher) {
+      setMessage("Celé údaje a přiřazení poruchy může upravit jen dispečink.");
+      setSuccessMessage("");
+      return;
+    }
+
     setSaving(true);
     setMessage("");
     setSuccessMessage(editingFaultId ? "Ukládám změny..." : "Ukládám poruchu...");
 
     const supabase = createClient();
 
-    const status: FaultStatus = form.main_technician_id ? "prirazeno" : "nova";
+    const effectiveMainTechnicianId = isDispatcher
+      ? form.main_technician_id
+      : currentProfile.id;
+    const status: FaultStatus = effectiveMainTechnicianId ? "prirazeno" : "nova";
 
     if (editingFaultId) {
       const { error: updateError } = await supabase
@@ -730,7 +758,7 @@ export default function FaultsPage() {
           region_id: selectedElevator?.region_id ?? null,
           priority: form.priority,
           description,
-          main_technician_id: form.main_technician_id || null,
+          main_technician_id: effectiveMainTechnicianId || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", editingFaultId);
@@ -758,17 +786,17 @@ export default function FaultsPage() {
       }
 
       const assigneeRows = [
-        ...(form.main_technician_id
+        ...(effectiveMainTechnicianId
           ? [
               {
                 fault_id: editingFaultId,
-                profile_id: form.main_technician_id,
+                profile_id: effectiveMainTechnicianId,
                 role: "hlavni" as const,
               },
             ]
           : []),
         ...form.helper_ids
-          .filter((id) => id !== form.main_technician_id)
+          .filter((id) => id !== effectiveMainTechnicianId)
           .map((id) => ({
             fault_id: editingFaultId,
             profile_id: id,
@@ -829,7 +857,7 @@ export default function FaultsPage() {
         status,
         description,
         created_by: currentProfile.id,
-        main_technician_id: form.main_technician_id || null,
+        main_technician_id: effectiveMainTechnicianId || null,
       })
       .select("id")
       .single();
@@ -845,24 +873,24 @@ export default function FaultsPage() {
       return;
     }
 
-    const assigneeRows = [
-      ...(form.main_technician_id
+    const assigneeRows = isDispatcher ? [
+      ...(effectiveMainTechnicianId
         ? [
             {
               fault_id: insertedFault.id,
-              profile_id: form.main_technician_id,
+              profile_id: effectiveMainTechnicianId,
               role: "hlavni" as const,
             },
           ]
         : []),
       ...form.helper_ids
-        .filter((id) => id !== form.main_technician_id)
+        .filter((id) => id !== effectiveMainTechnicianId)
         .map((id) => ({
           fault_id: insertedFault.id,
           profile_id: id,
           role: "spolupracovnik" as const,
         })),
-    ];
+    ] : [];
 
     if (assigneeRows.length > 0) {
       const { error: assigneesError } = await supabase
@@ -909,6 +937,16 @@ export default function FaultsPage() {
   }
 
   async function updateFaultStatus(fault: Fault, status: FaultStatus) {
+    if (!canManageFaults) {
+      setMessage("Máš přístup k poruchám jen pro čtení.");
+      return;
+    }
+
+    if (status === "archivovano" && !isDispatcher) {
+      setMessage("Archivovat poruchy může jen dispečink.");
+      return;
+    }
+
     const confirmText =
       status === "hotovo"
         ? "Opravdu označit poruchu jako hotovou?"
@@ -924,29 +962,10 @@ export default function FaultsPage() {
     setSuccessMessage("Ukládám změnu stavu...");
 
     const supabase = createClient();
-
-    const payload: {
-      status: FaultStatus;
-      updated_at: string;
-      finished_at?: string | null;
-      archived_at?: string | null;
-    } = {
-      status,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (status === "hotovo") {
-      payload.finished_at = new Date().toISOString();
-    }
-
-    if (status === "archivovano") {
-      payload.archived_at = new Date().toISOString();
-    }
-
-    const { error } = await supabase
-      .from("faults")
-      .update(payload)
-      .eq("id", fault.id);
+    const { error } = await supabase.rpc("set_fault_status", {
+      target_fault_id: fault.id,
+      next_status: status,
+    });
 
     if (error) {
       setSuccessMessage("");
@@ -958,8 +977,33 @@ export default function FaultsPage() {
     await loadData();
   }
 
+  async function addFaultNote(fault: Fault) {
+    const note = noteDrafts[fault.id]?.trim();
+    if (!note || !currentProfile || !canManageFaults) return;
+
+    setSavingNoteId(fault.id);
+    setMessage("");
+    setSuccessMessage("");
+    const supabase = createClient();
+    const { error } = await supabase.from("fault_notes").insert({
+      fault_id: fault.id,
+      profile_id: currentProfile.id,
+      note,
+    });
+
+    setSavingNoteId(null);
+    if (error) {
+      setMessage(`Poznámku se nepovedlo uložit: ${error.message}`);
+      return;
+    }
+
+    setNoteDrafts((current) => ({ ...current, [fault.id]: "" }));
+    setSuccessMessage("Poznámka byla přidána k poruše.");
+    await loadData();
+  }
+
   async function deleteFault(fault: Fault) {
-    if (!isAdminOrLead) {
+    if (!canManageFaults || !isAdminOrLead) {
       setMessage("Mazat poruchy může jen admin nebo vedoucí technik.");
       setSuccessMessage("");
       return;
@@ -1065,10 +1109,10 @@ export default function FaultsPage() {
         <header className="topbar">
           <div>
             <h1>Poruchy</h1>
-            <p>Aktivní poruchy, uvízlé osoby, přiřazení techniků a archiv.</p>
+            <p>Aktivní práce, dokončené poruchy a samostatný archiv.</p>
           </div>
 
-          <div className="topbar-actions">
+          {canManageFaults && <div className="topbar-actions">
             <button onClick={() => startCreate()} className="primary-action">
               + Založit poruchu
             </button>
@@ -1079,7 +1123,7 @@ export default function FaultsPage() {
             >
               Uvízlé osoby
             </button>
-          </div>
+          </div>}
         </header>
 
         {message && <div className="error-box">{message}</div>}
@@ -1087,9 +1131,15 @@ export default function FaultsPage() {
 
         <section className="stats-grid">
           <StatCard label="Aktivní poruchy" value={activeFaultsCount} />
-          <StatCard label="Uvízlé osoby" value={trappedFaultsCount} danger />
+          <StatCard label="Hotové poruchy" value={doneFaultsCount} />
           <StatCard label="Moje poruchy" value={myFaultsCount} />
-          <StatCard label="Zobrazeno" value={orderedFaults.length} />
+          <StatCard label="Uvízlé osoby" value={trappedFaultsCount} danger />
+        </section>
+
+        <section className="fault-status-tabs" aria-label="Stav poruch">
+          <button className={statusFilter === "active" ? "active" : ""} onClick={() => setStatusFilter("active")}><span>Aktivní</span><strong>{activeFaultsCount}</strong><small>čekají na vyřešení</small></button>
+          <button className={statusFilter === "done" ? "active done" : "done"} onClick={() => setStatusFilter("done")}><span>Hotové</span><strong>{doneFaultsCount}</strong><small>dokončená práce</small></button>
+          <button className={statusFilter === "archive" ? "active archive" : "archive"} onClick={() => setStatusFilter("archive")}><span>Archiv</span><strong>{archivedFaultsCount}</strong><small>oddělené starší poruchy</small></button>
         </section>
 
         {showForm && (
@@ -1192,7 +1242,7 @@ export default function FaultsPage() {
                   </select>
                 </label>
 
-                <label className="field">
+                {isDispatcher && <label className="field">
                   <span>Hlavní technik</span>
                   <select
                     value={form.main_technician_id}
@@ -1216,7 +1266,7 @@ export default function FaultsPage() {
                       </option>
                     ))}
                   </select>
-                </label>
+                </label>}
               </div>
 
               <label className="field">
@@ -1240,7 +1290,7 @@ export default function FaultsPage() {
                 />
               </label>
 
-              <div className="helpers-box">
+              {isDispatcher && <div className="helpers-box">
                 <span>Spolupracující technici</span>
 
                 <div className="helpers-list">
@@ -1264,7 +1314,7 @@ export default function FaultsPage() {
                     );
                   })}
                 </div>
-              </div>
+              </div>}
 
               <label className="field">
                 <span>
@@ -1311,21 +1361,6 @@ export default function FaultsPage() {
             />
 
             <select
-              value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(
-                  event.target.value as "active" | "done" | "archive" | "all"
-                )
-              }
-              className="input"
-            >
-              <option value="active">Aktivní</option>
-              <option value="done">Hotové</option>
-              <option value="archive">Archivované</option>
-              <option value="all">Všechny</option>
-            </select>
-
-            <select
               value={priorityFilter}
               onChange={(event) =>
                 setPriorityFilter(event.target.value as FaultPriority | "all")
@@ -1339,7 +1374,7 @@ export default function FaultsPage() {
               <option value="bezna">Běžná</option>
             </select>
 
-            <select
+            {isDispatcher && <select
               value={regionFilter}
               onChange={(event) => setRegionFilter(event.target.value)}
               className="input"
@@ -1350,9 +1385,9 @@ export default function FaultsPage() {
                   {region.name}
                 </option>
               ))}
-            </select>
+            </select>}
 
-            <select
+            {isDispatcher && <select
               value={technicianFilter}
               onChange={(event) => setTechnicianFilter(event.target.value)}
               className="input"
@@ -1363,13 +1398,19 @@ export default function FaultsPage() {
                   {profile.full_name}
                 </option>
               ))}
-            </select>
+            </select>}
           </div>
         </section>
 
         <section className="fault-list">
           {orderedFaults.length === 0 && (
-            <div className="empty-box">Žádné poruchy pro vybraný filtr.</div>
+            <div className="empty-box">
+              {statusFilter === "active"
+                ? "Žádná aktivní porucha."
+                : statusFilter === "done"
+                  ? "Žádná dokončená porucha."
+                  : "Archiv je zatím prázdný."}
+            </div>
           )}
 
           {orderedFaults.map((fault) => (
@@ -1391,9 +1432,19 @@ export default function FaultsPage() {
     const helpers = getHelpersForFault(fault.id);
     const notes = getNotesForFault(fault.id);
     const urgent = fault.priority === "uvizle_osoby";
+    const canWorkOnFault = canManageFaults && fault.status !== "archivovano" && (
+      isDispatcher ||
+      isFaultAssignedToMe(fault) ||
+      fault.created_by === currentProfile?.id
+    );
+    const stateClass = fault.status === "hotovo"
+      ? "done"
+      : fault.status === "archivovano"
+        ? "archived"
+        : "active";
 
     return (
-      <article className={urgent ? "fault-card urgent" : "fault-card"}>
+      <article className={`fault-card ${stateClass} ${urgent ? "urgent" : ""}`}>
         <div className="fault-main">
           <div>
             <div className="fault-tags">
@@ -1403,7 +1454,7 @@ export default function FaultsPage() {
 
               <span className="pill blue">{statusLabels[fault.status]}</span>
 
-              {isFaultAssignedToMe(fault) && (
+              {(isFaultAssignedToMe(fault) || fault.created_by === currentProfile?.id) && (
                 <span className="pill green">Moje práce</span>
               )}
             </div>
@@ -1447,12 +1498,30 @@ export default function FaultsPage() {
           </div>
         )}
 
-        <div className="fault-actions">
-          <button onClick={() => startEdit(fault)} className="secondary-action">
-            Upravit
-          </button>
+        {canWorkOnFault && (
+          <div className="fault-note-compose">
+            <textarea
+              value={noteDrafts[fault.id] ?? ""}
+              onChange={(event) => setNoteDrafts((current) => ({ ...current, [fault.id]: event.target.value }))}
+              placeholder="Přidat krátkou poznámku k průběhu poruchy…"
+              rows={2}
+            />
+            <button
+              className="secondary-action"
+              disabled={savingNoteId === fault.id || !(noteDrafts[fault.id]?.trim())}
+              onClick={() => void addFaultNote(fault)}
+            >
+              {savingNoteId === fault.id ? "Ukládám…" : "Přidat poznámku"}
+            </button>
+          </div>
+        )}
 
-          {fault.status !== "hotovo" && fault.status !== "archivovano" && (
+        <div className="fault-actions">
+          {canManageFaults && isDispatcher && fault.status !== "archivovano" && <button onClick={() => startEdit(fault)} className="secondary-action">
+            Upravit
+          </button>}
+
+          {canWorkOnFault && fault.status !== "hotovo" && (
             <>
               <button
                 onClick={() => updateFaultStatus(fault, "na_ceste")}
@@ -1477,7 +1546,7 @@ export default function FaultsPage() {
             </>
           )}
 
-          {fault.status === "hotovo" && (
+          {canManageFaults && isDispatcher && fault.status === "hotovo" && (
             <button
               onClick={() => updateFaultStatus(fault, "archivovano")}
               className="secondary-action"
@@ -1486,7 +1555,7 @@ export default function FaultsPage() {
             </button>
           )}
 
-          {isAdminOrLead && (
+          {canManageFaults && isAdminOrLead && (
             <button onClick={() => deleteFault(fault)} className="delete-action">
               Smazat
             </button>
@@ -1796,6 +1865,56 @@ function StyleBlock() {
         font-weight: 950;
       }
 
+      .fault-status-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .fault-status-tabs button {
+        display: grid;
+        gap: 3px;
+        padding: 15px;
+        border: 1px solid #334155;
+        border-radius: 18px;
+        background: #0f172a;
+        color: #e2e8f0;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .fault-status-tabs button.active {
+        border-color: #60a5fa;
+        box-shadow: inset 0 0 0 1px #3b82f6;
+        background: #172554;
+      }
+
+      .fault-status-tabs button.done.active {
+        border-color: #22c55e;
+        box-shadow: inset 0 0 0 1px #16a34a;
+        background: #052e16;
+      }
+
+      .fault-status-tabs button.archive.active {
+        border-color: #64748b;
+        box-shadow: inset 0 0 0 1px #64748b;
+        background: #1e293b;
+      }
+
+      .fault-status-tabs span {
+        color: #cbd5e1;
+        font-weight: 900;
+      }
+
+      .fault-status-tabs strong {
+        font-size: 28px;
+      }
+
+      .fault-status-tabs small {
+        color: #94a3b8;
+      }
+
       .card {
         background: #0f172a;
         border: 1px solid #1e293b;
@@ -1956,7 +2075,7 @@ function StyleBlock() {
 
       .filters {
         display: grid;
-        grid-template-columns: minmax(240px, 1fr) repeat(4, minmax(160px, 220px));
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
         gap: 10px;
       }
 
@@ -1976,6 +2095,16 @@ function StyleBlock() {
       .fault-card.urgent {
         border-color: #ef4444;
         background: #450a0a;
+      }
+
+      .fault-card.done {
+        border-color: #166534;
+        background: #071d12;
+      }
+
+      .fault-card.archived {
+        opacity: 0.78;
+        background: #111827;
       }
 
       .fault-main {
@@ -2091,6 +2220,33 @@ function StyleBlock() {
         display: flex;
         gap: 10px;
         flex-wrap: wrap;
+      }
+
+      .fault-note-compose {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) auto;
+        gap: 10px;
+        align-items: stretch;
+        margin-top: 14px;
+        padding: 12px;
+        border: 1px solid #334155;
+        border-radius: 16px;
+        background: #020617;
+      }
+
+      .fault-note-compose textarea {
+        min-height: 58px;
+        padding: 10px 12px;
+        border: 1px solid #334155;
+        border-radius: 11px;
+        background: #0f172a;
+        color: #f8fafc;
+        resize: vertical;
+      }
+
+      .fault-note-compose button:disabled {
+        opacity: .5;
+        cursor: not-allowed;
       }
 
       .empty-box {
@@ -2241,6 +2397,10 @@ function StyleBlock() {
           margin-bottom: 14px;
         }
 
+        .fault-status-tabs {
+          grid-template-columns: 1fr;
+        }
+
         .stat-card {
           padding: 14px;
           border-radius: 17px;
@@ -2267,6 +2427,10 @@ function StyleBlock() {
 
         .form-grid,
         .filters {
+          grid-template-columns: 1fr;
+        }
+
+        .fault-note-compose {
           grid-template-columns: 1fr;
         }
 

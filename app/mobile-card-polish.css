@@ -23,6 +23,40 @@
 }
 
 /* PORUCHY */
+.app-content-root .fault-status-tabs button {
+  border: 1px solid #c9d6dd !important;
+  background: #ffffff !important;
+  color: #10273a !important;
+  box-shadow: 0 8px 22px rgba(10, 38, 57, 0.06) !important;
+}
+
+.app-content-root .fault-status-tabs button.active {
+  border-color: #75a8e5 !important;
+  background: #eaf3ff !important;
+  box-shadow: inset 0 0 0 1px #4b89d6 !important;
+}
+
+.app-content-root .fault-status-tabs button.done.active {
+  border-color: #74bd90 !important;
+  background: #e9f8ee !important;
+  box-shadow: inset 0 0 0 1px #3e9c62 !important;
+}
+
+.app-content-root .fault-status-tabs button.archive.active {
+  border-color: #9aabb7 !important;
+  background: #edf1f4 !important;
+  box-shadow: inset 0 0 0 1px #7a8e9c !important;
+}
+
+.app-content-root .fault-status-tabs span,
+.app-content-root .fault-status-tabs strong {
+  color: #082a49 !important;
+}
+
+.app-content-root .fault-status-tabs small {
+  color: #657b8a !important;
+}
+
 .app-content-root .fault-list {
   gap: 18px !important;
 }
@@ -43,6 +77,17 @@
   border-color: #efb3b3 !important;
   border-left-color: #cf3434 !important;
   background: linear-gradient(135deg, #ffffff 0%, #fff6f6 100%) !important;
+}
+
+.app-content-root .fault-card.done {
+  border-color: #9bcdb0 !important;
+  border-left-color: #16934b !important;
+  background: linear-gradient(135deg, #ffffff 0%, #f2fbf5 100%) !important;
+}
+
+.app-content-root .fault-card.archived {
+  border-left-color: #8396a3 !important;
+  background: #f6f8f9 !important;
 }
 
 .app-content-root .fault-card h2 {
@@ -123,6 +168,17 @@
 .app-content-root .timeline-item span,
 .app-content-root .timeline-item p {
   color: #52697b !important;
+}
+
+.app-content-root .fault-note-compose {
+  border-color: #d4e0e6 !important;
+  background: #f5f8fa !important;
+}
+
+.app-content-root .fault-note-compose textarea {
+  border-color: #c3d2da !important;
+  background: #ffffff !important;
+  color: #10273a !important;
 }
 
 .app-content-root .pill.red {

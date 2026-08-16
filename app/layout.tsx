@@ -5,6 +5,7 @@ import GlobalChrome from "@/components/GlobalChrome";
 import TechnicianAvailabilityManagerSafe from "@/components/TechnicianAvailabilityManagerSafe";
 import TechnicianDashboardExpander from "@/components/TechnicianDashboardExpander";
 import PwaInstaller from "./_components/pwa-installer";
+import { AccessProvider, PermissionGate } from "@/components/AccessControl";
 import "./globals.css";
 import "./modern-overrides.css";
 import "./chrome-fixes.css";
@@ -71,12 +72,14 @@ export default function RootLayout({
   return (
     <html lang="cs" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full">
-        <GlobalSidebar />
-        <GlobalChrome />
-        <TechnicianDashboardExpander />
-        <TechnicianAvailabilityManagerSafe />
-        <div className="app-content-root">{children}</div>
-        <PwaInstaller />
+        <AccessProvider>
+          <GlobalSidebar />
+          <GlobalChrome />
+          <TechnicianDashboardExpander />
+          <TechnicianAvailabilityManagerSafe />
+          <div className="app-content-root"><PermissionGate>{children}</PermissionGate></div>
+          <PwaInstaller />
+        </AccessProvider>
       </body>
     </html>
   );

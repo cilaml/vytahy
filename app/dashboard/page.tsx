@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAccessControl } from "@/components/AccessControl";
 import { createClient } from "@/lib/supabase/client";
 
 type UserRole = "admin" | "vedouci_technik" | "technik" | "sekretariat" | "servis";
@@ -205,6 +206,7 @@ function parseDate(value: string | null) {
 }
 
 export default function DashboardPage() {
+  const { canManage } = useAccessControl();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
@@ -461,6 +463,7 @@ export default function DashboardPage() {
   }
 
   function openCalendarAction(date: Date, start = "08:00") {
+    if (!canManage("planned_actions")) return;
     window.dispatchEvent(new CustomEvent(OPEN_CALENDAR_ACTION_EVENT, {
       detail: { date: dateKey(date), start },
     }));
