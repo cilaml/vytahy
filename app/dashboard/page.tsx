@@ -270,6 +270,7 @@ export default function DashboardPage() {
         supabase
           .from("planned_actions")
           .select("id,title,action_type,status,starts_at,ends_at,all_day,address,elevator_id")
+          .eq("tool_checklist_only", false)
           .neq("status", "zruseno")
           .order("starts_at", { ascending: true }),
         supabase

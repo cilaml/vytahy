@@ -187,7 +187,7 @@ export default function PlannedActionsPage() {
     const [profilesResult, elevatorsResult, actionsResult, assigneesResult, viewersResult] = await Promise.all([
       supabase.from("profiles").select("id,full_name,role,active,calendar_color").eq("active", true).order("full_name"),
       supabase.from("elevators").select("id,label,address").eq("status", "aktivni").order("address"),
-      supabase.from("planned_actions").select("id,title,action_type,status,starts_at,ends_at,address,contact_name,contact_phone,description,elevator_id,visibility,created_by,completed_at,completed_by").order("starts_at"),
+      supabase.from("planned_actions").select("id,title,action_type,status,starts_at,ends_at,address,contact_name,contact_phone,description,elevator_id,visibility,created_by,completed_at,completed_by").eq("tool_checklist_only", false).order("starts_at"),
       supabase.from("planned_action_assignees").select("planned_action_id,profile_id,is_lead"),
       supabase.from("planned_action_viewers").select("planned_action_id,profile_id"),
     ]);
