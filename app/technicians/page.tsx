@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
+import ModulePermissionEditor from "@/components/ModulePermissionEditor";
+import { useAccessControl } from "@/components/AccessControl";
 
 type ProfileRole =
   | "admin"
@@ -80,6 +82,7 @@ const navigationItems = [
 ];
 
 export default function TechniciansPage() {
+  const { canManage: canManageModule } = useAccessControl();
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -114,10 +117,11 @@ export default function TechniciansPage() {
 
   const isAdmin = currentProfile?.role === "admin";
 
-  const canManageUsers =
+  const canManageUsers = canManageModule("technicians") && (
     currentProfile?.role === "admin" ||
     currentProfile?.role === "vedouci_technik" ||
-    currentProfile?.role === "sekretariat";
+    currentProfile?.role === "sekretariat"
+  );
 
   const canDeleteUsers = currentProfile?.role === "admin";
 
@@ -1195,6 +1199,14 @@ export default function TechniciansPage() {
                 </span>
               </label>
             </div>
+
+            {isAdmin && (
+              <ModulePermissionEditor
+                profileId={editingProfile.id}
+                role={editingProfile.role}
+                profileName={editingProfile.full_name || editingProfile.email}
+              />
+            )}
 
             <div>
               <h3 style={styles.formSectionTitle}>Sekundární rajony</h3>

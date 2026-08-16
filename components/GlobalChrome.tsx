@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useAccessControl } from "@/components/AccessControl";
 import { createClient } from "@/lib/supabase/client";
 
 type Profile = {
@@ -67,6 +68,7 @@ function twoHoursAfter(value: string) {
 
 export default function GlobalChrome() {
   const pathname = usePathname();
+  const { loading: accessLoading, canView, canManage } = useAccessControl();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [readKeys, setReadKeys] = useState<string[]>([]);
@@ -92,11 +94,11 @@ export default function GlobalChrome() {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (pathname === "/login") return;
+    if (pathname === "/login" || accessLoading) return;
     void loadNotifications();
     const timer = window.setInterval(() => void loadNotifications(), 30000);
     return () => window.clearInterval(timer);
-  }, [pathname]);
+  }, [pathname, accessLoading]);
 
   useEffect(() => {
     function closeMenus(event: MouseEvent) {
@@ -111,6 +113,7 @@ export default function GlobalChrome() {
 
   useEffect(() => {
     function openFromCalendar(event: Event) {
+      if (!canManage("planned_actions")) return;
       const detail = (event as CustomEvent<CalendarActionRequest>).detail ?? {};
       const start = detail.start ?? "08:00";
       setForm({
@@ -140,7 +143,7 @@ export default function GlobalChrome() {
 
     window.addEventListener(OPEN_CALENDAR_ACTION_EVENT, openFromCalendar);
     return () => window.removeEventListener(OPEN_CALENDAR_ACTION_EVENT, openFromCalendar);
-  }, []);
+  }, [canManage]);
 
   async function loadNotifications() {
     const supabase = createClient();
@@ -148,9 +151,23 @@ export default function GlobalChrome() {
     const user = authData.user;
     if (!user) return;
 
-    const [profileResult, actionAssigneesResult, faultAssigneesResult, actionsResult, faultsResult, messagesResult, regionsResult] =
+    const profileResult = await supabase
+      .from("profiles")
+      .select("id,email,full_name,role,primary_region_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!profileResult.data) return;
+    const currentProfile = profileResult.data as Profile;
+    setProfile(currentProfile);
+
+    if (!canView("notifications")) {
+      setNotifications([]);
+      return;
+    }
+
+    const [actionAssigneesResult, faultAssigneesResult, actionsResult, faultsResult, messagesResult, regionsResult] =
       await Promise.all([
-        supabase.from("profiles").select("id,email,full_name,role,primary_region_id").eq("id", user.id).maybeSingle(),
         supabase.from("planned_action_assignees").select("planned_action_id,is_lead").eq("profile_id", user.id),
         supabase.from("fault_assignees").select("fault_id,role").eq("profile_id", user.id),
         supabase.from("planned_actions").select("id,title,starts_at,address,status").neq("status", "zruseno").order("starts_at", { ascending: false }).limit(100),
@@ -158,10 +175,6 @@ export default function GlobalChrome() {
         supabase.from("messages").select("id,title,body,target_type,target_role,target_profile_id,target_region_id,created_at").order("created_at", { ascending: false }).limit(60),
         supabase.from("profile_regions").select("region_id").eq("profile_id", user.id),
       ]);
-
-    if (!profileResult.data) return;
-    const currentProfile = profileResult.data as Profile;
-    setProfile(currentProfile);
 
     const assignedActionIds = new Set((actionAssigneesResult.data ?? []).map((item) => item.planned_action_id));
     const assignedFaultIds = new Set((faultAssigneesResult.data ?? []).map((item) => item.fault_id));
@@ -264,6 +277,10 @@ export default function GlobalChrome() {
 
   async function saveAction(event: FormEvent) {
     event.preventDefault();
+    if (!canManage("planned_actions")) {
+      setActionMessage("Nemáš oprávnění vytvářet plánované akce.");
+      return;
+    }
     setSaving(true);
     setActionMessage("");
     const startsAt = new Date(`${form.date}T${form.start}:00`);
@@ -337,7 +354,7 @@ export default function GlobalChrome() {
   return (
     <>
       <div className="global-user-tools" ref={rootRef}>
-        <div className="global-tool-wrap">
+        {canView("notifications") && <div className="global-tool-wrap">
           <button
             className="global-tool-button"
             type="button"
@@ -360,7 +377,7 @@ export default function GlobalChrome() {
               </div>
             </section>
           )}
-        </div>
+        </div>}
 
         <div className="global-tool-wrap">
           <button
