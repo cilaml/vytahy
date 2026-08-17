@@ -1413,9 +1413,7 @@ export default function FaultsPage() {
             </div>
           )}
 
-          {orderedFaults.map((fault) => (
-            <FaultCard key={fault.id} fault={fault} />
-          ))}
+          {orderedFaults.map((fault) => renderFaultCard(fault))}
         </section>
 
         <button
@@ -1428,7 +1426,7 @@ export default function FaultsPage() {
     </main>
   );
 
-  function FaultCard({ fault }: { fault: Fault }) {
+  function renderFaultCard(fault: Fault) {
     const helpers = getHelpersForFault(fault.id);
     const notes = getNotesForFault(fault.id);
     const urgent = fault.priority === "uvizle_osoby";
@@ -1444,7 +1442,7 @@ export default function FaultsPage() {
         : "active";
 
     return (
-      <article className={`fault-card ${stateClass} ${urgent ? "urgent" : ""}`}>
+      <article key={fault.id} className={`fault-card ${stateClass} ${urgent ? "urgent" : ""}`}>
         <div className="fault-main">
           <div>
             <div className="fault-tags">
