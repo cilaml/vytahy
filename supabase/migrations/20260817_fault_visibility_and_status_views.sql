@@ -218,7 +218,7 @@ begin
 
   update public.faults
   set
-    status = next_status,
+    status = next_status::public.fault_status,
     finished_at = case
       when next_status = 'hotovo' then coalesce(finished_at, now())
       when next_status <> 'archivovano' then null
