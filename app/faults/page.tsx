@@ -847,9 +847,11 @@ export default function FaultsPage() {
       return;
     }
 
-    const { data: insertedFault, error: insertError } = await supabase
+    const faultId = crypto.randomUUID();
+    const { error: insertError } = await supabase
       .from("faults")
       .insert({
+        id: faultId,
         elevator_id: selectedElevator?.id ?? null,
         custom_elevator_label: selectedElevator ? null : customElevatorLabel,
         region_id: selectedElevator?.region_id ?? null,
@@ -858,18 +860,12 @@ export default function FaultsPage() {
         description,
         created_by: currentProfile.id,
         main_technician_id: effectiveMainTechnicianId || null,
-      })
-      .select("id")
-      .single();
+      });
 
-    if (insertError || !insertedFault) {
+    if (insertError) {
       setSaving(false);
       setSuccessMessage("");
-      setMessage(
-        `Chyba při založení poruchy: ${
-          insertError?.message ?? "Neznámá chyba"
-        }`
-      );
+      setMessage(`Chyba při založení poruchy: ${insertError.message}`);
       return;
     }
 
@@ -877,7 +873,7 @@ export default function FaultsPage() {
       ...(effectiveMainTechnicianId
         ? [
             {
-              fault_id: insertedFault.id,
+              fault_id: faultId,
               profile_id: effectiveMainTechnicianId,
               role: "hlavni" as const,
             },
@@ -886,7 +882,7 @@ export default function FaultsPage() {
       ...form.helper_ids
         .filter((id) => id !== effectiveMainTechnicianId)
         .map((id) => ({
-          fault_id: insertedFault.id,
+          fault_id: faultId,
           profile_id: id,
           role: "spolupracovnik" as const,
         })),
@@ -912,7 +908,7 @@ export default function FaultsPage() {
 
     if (noteText) {
       const { error: noteError } = await supabase.from("fault_notes").insert({
-        fault_id: insertedFault.id,
+        fault_id: faultId,
         profile_id: currentProfile.id,
         note: noteText,
       });
@@ -928,7 +924,7 @@ export default function FaultsPage() {
       }
     }
 
-    await notifyFaultCreated(insertedFault.id);
+    await notifyFaultCreated(faultId);
 
     setSaving(false);
     resetForm();
