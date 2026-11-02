@@ -1,75 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getErrorMessage, requirePushUser } from "@/lib/server/push-auth";
 
 export const runtime = "nodejs";
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-
-  if (typeof error === "object" && error !== null) {
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return "Neznámá objektová chyba.";
-    }
-  }
-
-  return String(error);
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      return NextResponse.json(
-        { error: "Chybí Supabase env proměnné." },
-        { status: 500 }
-      );
-    }
-
-    const authorizationHeader = request.headers.get("authorization");
-    const token = authorizationHeader?.replace("Bearer ", "");
-
-    if (!token) {
-      return NextResponse.json(
-        { error: "Chybí přihlašovací token." },
-        { status: 401 }
-      );
-    }
-
-    const authClient = createClient(supabaseUrl, anonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    });
-
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
-    const {
-      data: { user },
-      error: userError,
-    } = await authClient.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        {
-          error:
-            userError?.message ||
-            "Nepodařilo se ověřit přihlášeného uživatele.",
-        },
-        { status: 401 }
-      );
-    }
+    // Odhlášení musí zůstat dostupné i uživateli, kterému administrátor mezitím
+    // odebral modul Upozornění. Stále ale ověřujeme jeho přihlášení a vlastnictví.
+    const auth = await requirePushUser(request);
+    if (!auth.ok) return auth.response;
 
     let body: { endpoint?: string };
 
@@ -82,23 +21,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const endpoint = body.endpoint;
+    const endpoint = body.endpoint?.trim();
 
-    if (!endpoint) {
+    if (!endpoint || endpoint.length > 4096) {
       return NextResponse.json(
-        { error: "Chybí endpoint zařízení." },
+        { error: "Chybí platný endpoint zařízení." },
         { status: 400 }
       );
     }
 
-    const { error: updateError } = await adminClient
+    const { data, error: updateError } = await auth.adminClient
       .from("push_subscriptions")
       .update({
         active: false,
         updated_at: new Date().toISOString(),
       })
-      .eq("profile_id", user.id)
-      .eq("endpoint", endpoint);
+      .eq("profile_id", auth.user.id)
+      .eq("endpoint", endpoint)
+      .select("id");
 
     if (updateError) {
       return NextResponse.json(
@@ -111,7 +51,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      message: "Upozornění jsou vypnutá.",
+      active: false,
+      found: (data?.length ?? 0) > 0,
+      message: "Upozornění jsou pro toto zařízení vypnutá.",
     });
   } catch (error) {
     return NextResponse.json(

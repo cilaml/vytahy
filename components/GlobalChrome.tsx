@@ -48,6 +48,23 @@ const actionTypes = [
   ["jine", "Jiné"],
 ] as const;
 
+type CalendarActionType = (typeof actionTypes)[number][0];
+
+function actionTypeLabel(value: string) {
+  return actionTypes.find(([type]) => type === value)?.[1] ?? "Práce";
+}
+
+function isSuggestedActionTitle(value: string) {
+  return actionTypes.some(
+    ([, label]) => value === label || value.startsWith(`${label} – `)
+  );
+}
+
+function suggestedActionTitle(type: string, elevator = "") {
+  const label = actionTypeLabel(type);
+  return elevator ? `${label} – ${elevator}` : label;
+}
+
 function dateKey(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -83,7 +100,7 @@ export default function GlobalChrome() {
   const [saving, setSaving] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [form, setForm] = useState({
-    title: "",
+    title: suggestedActionTitle("servis"),
     action_type: "servis",
     date: dateKey(new Date()),
     start: "08:00",
@@ -117,7 +134,7 @@ export default function GlobalChrome() {
       const detail = (event as CustomEvent<CalendarActionRequest>).detail ?? {};
       const start = detail.start ?? "08:00";
       setForm({
-        title: "",
+        title: suggestedActionTitle("servis"),
         action_type: "servis",
         date: detail.date ?? dateKey(new Date()),
         start,
@@ -272,7 +289,25 @@ export default function GlobalChrome() {
   function chooseElevator(elevator: Elevator) {
     setSelectedElevatorId(elevator.id);
     setElevatorQuery(`${elevator.address} — ${elevator.label}`);
-    setForm((current) => ({ ...current, address: current.address || elevator.address }));
+    setForm((current) => ({
+      ...current,
+      address: current.address || elevator.address,
+      title:
+        !current.title.trim() || isSuggestedActionTitle(current.title)
+          ? suggestedActionTitle(current.action_type, elevator.label)
+          : current.title,
+    }));
+  }
+
+  function changeActionType(actionType: CalendarActionType) {
+    setForm((current) => ({
+      ...current,
+      action_type: actionType,
+      title:
+        !current.title.trim() || isSuggestedActionTitle(current.title)
+          ? suggestedActionTitle(actionType, selectedElevatorId ? elevatorQuery.split(" — ").at(-1) : "")
+          : current.title,
+    }));
   }
 
   async function saveAction(event: FormEvent) {
@@ -344,7 +379,7 @@ export default function GlobalChrome() {
     setSelectedEmployees([]);
     setSelectedElevatorId("");
     setElevatorQuery("");
-    setForm({ title: "", action_type: "servis", date: form.date, start: "08:00", end: "10:00", address: "", description: "" });
+    setForm({ title: suggestedActionTitle("servis"), action_type: "servis", date: form.date, start: "08:00", end: "10:00", address: "", description: "" });
     await loadNotifications();
     window.location.reload();
   }
@@ -361,7 +396,7 @@ export default function GlobalChrome() {
             aria-label="Upozornění"
             onClick={() => { setNotificationOpen((value) => !value); setProfileOpen(false); }}
           >
-            <span aria-hidden="true">♢</span>
+            <span aria-hidden="true">🔔</span>
             {unreadCount > 0 && <b>{Math.min(unreadCount, 99)}</b>}
           </button>
           {notificationOpen && (
@@ -375,6 +410,13 @@ export default function GlobalChrome() {
                   </button>
                 ))}
               </div>
+              <a
+                className="global-notification-settings"
+                href="/notifications"
+                onClick={() => setNotificationOpen(false)}
+              >
+                Nastavení upozornění v tomto telefonu
+              </a>
             </section>
           )}
         </div>}
@@ -402,6 +444,19 @@ export default function GlobalChrome() {
                 <span aria-hidden="true">⇩</span>
                 <span><strong>Nainstalovat aplikaci</strong><small>Přidat Výtahy DC do počítače nebo telefonu</small></span>
               </button>
+              {canView("notifications") && (
+                <a
+                  className="profile-notifications-link"
+                  href="/notifications"
+                  onClick={() => setProfileOpen(false)}
+                >
+                  <span aria-hidden="true">🔔</span>
+                  <span>
+                    <strong>Upozornění v telefonu</strong>
+                    <small>Zapnout, vypnout nebo poslat test</small>
+                  </span>
+                </a>
+              )}
               <button type="button" className="global-logout" onClick={logout}>Odhlásit se</button>
             </section>
           )}
@@ -413,13 +468,11 @@ export default function GlobalChrome() {
           <form className="global-action-modal" onSubmit={saveAction} onMouseDown={(event) => event.stopPropagation()}>
             <header><div><strong>Nová akce</strong><span>Přidání přímo z hlavního kalendáře</span></div><button type="button" onClick={() => setActionOpen(false)}>×</button></header>
             {actionMessage && <div className="global-form-message">{actionMessage}</div>}
-            <label>Název<input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Např. výměna rozvaděče" /></label>
-            <div className="global-form-grid three"><label>Typ<select value={form.action_type} onChange={(event) => setForm({ ...form, action_type: event.target.value })}>{actionTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Datum<input required type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label><label>Čas<input required type="time" value={form.start} onChange={(event) => setForm({ ...form, start: event.target.value })} /></label></div>
+            <label>Co se bude dělat<input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Např. výměna rozvaděče" /></label>
+            <div className="global-form-grid compact"><label>Typ<select value={form.action_type} onChange={(event) => changeActionType(event.target.value as CalendarActionType)}>{actionTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Datum<input required type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label><label>Od<input required type="time" value={form.start} onChange={(event) => { const start = event.target.value; setForm({ ...form, start, end: twoHoursAfter(start) }); }} /></label><label>Do<input required type="time" value={form.end} onChange={(event) => setForm({ ...form, end: event.target.value })} /></label></div>
             <label>Výtah – vyhledej uložený, napiš vlastní nebo nech prázdné<div className="global-combobox"><input value={elevatorQuery} onChange={(event) => { setElevatorQuery(event.target.value); setSelectedElevatorId(""); }} placeholder="Adresa, označení nebo vlastní text…" />{elevatorSuggestions.length > 0 && <div className="global-suggestions">{elevatorSuggestions.map((item) => <button type="button" key={item.id} onClick={() => chooseElevator(item)}><strong>{item.address}</strong><span>{item.label}</span></button>)}</div>}</div></label>
-            <div className="global-form-grid two"><label>Od<input required type="time" value={form.start} onChange={(event) => setForm({ ...form, start: event.target.value })} /></label><label>Do<input required type="time" value={form.end} onChange={(event) => setForm({ ...form, end: event.target.value })} /></label></div>
-            <label>Adresa<input value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Může zůstat prázdná" /></label>
-            <label>Poznámka<textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
-            <fieldset><legend>Přiřadit zaměstnance – volitelné</legend><div className="global-employee-grid">{employees.map((employee) => <label key={employee.id}><input type="checkbox" checked={selectedEmployees.includes(employee.id)} onChange={() => setSelectedEmployees((current) => current.includes(employee.id) ? current.filter((id) => id !== employee.id) : [...current, employee.id])} />{employee.full_name}</label>)}</div></fieldset>
+            <details className="global-form-section" open={employees.length <= 4 ? true : undefined}><summary>Přiřadit zaměstnance <span>{selectedEmployees.length > 0 ? `${selectedEmployees.length} vybráno` : "volitelné"}</span></summary><div className="global-employee-grid">{employees.map((employee) => <label key={employee.id}><input type="checkbox" checked={selectedEmployees.includes(employee.id)} onChange={() => setSelectedEmployees((current) => current.includes(employee.id) ? current.filter((id) => id !== employee.id) : [...current, employee.id])} />{employee.full_name}</label>)}</div></details>
+            <details className="global-form-section"><summary>Adresa a poznámka <span>volitelné</span></summary><label>Adresa<input value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Doplní se automaticky z výtahu" /></label><label>Poznámka<textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label></details>
             <footer><button type="button" className="secondary" onClick={() => setActionOpen(false)}>Zrušit</button><button disabled={saving} type="submit">{saving ? "Ukládám…" : "Uložit akci"}</button></footer>
           </form>
         </div>

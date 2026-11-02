@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import webpush from "web-push";
+import {
+  getErrorMessage,
+  getErrorStatusCode,
+  requirePushUser,
+} from "@/lib/server/push-auth";
 
 export const runtime = "nodejs";
 
@@ -13,112 +17,60 @@ type PushSubscriptionRow = {
   active: boolean;
 };
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-
-  if (typeof error === "object" && error !== null) {
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return "Neznámá objektová chyba.";
-    }
-  }
-
-  return String(error);
-}
-
-function getErrorStatusCode(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "statusCode" in error &&
-    typeof (error as { statusCode?: unknown }).statusCode === "number"
-  ) {
-    return (error as { statusCode: number }).statusCode;
-  }
-
-  return null;
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const auth = await requirePushUser(request, {
+      module: "notifications",
+      level: "view",
+    });
+    if (!auth.ok) return auth.response;
 
     const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
     const vapidSubject = process.env.VAPID_SUBJECT;
 
-    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      return NextResponse.json(
-        { error: "Chybí Supabase env proměnné." },
-        { status: 500 }
-      );
-    }
-
     if (!vapidPublicKey || !vapidPrivateKey || !vapidSubject) {
       return NextResponse.json(
         {
           error:
-            "Chybí VAPID env proměnné. Zkontroluj ve Vercelu NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY a VAPID_SUBJECT.",
+            "Chybí VAPID nastavení serveru. Zkontroluj ve Vercelu NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY a VAPID_SUBJECT.",
         },
         { status: 500 }
       );
     }
 
-    const authorizationHeader = request.headers.get("authorization");
-    const token = authorizationHeader?.replace("Bearer ", "");
+    let endpoint: string | undefined;
 
-    if (!token) {
+    try {
+      const body = (await request.json()) as { endpoint?: string };
+      endpoint = body.endpoint?.trim();
+    } catch {
+      // Endpoint je volitelný kvůli zpětné kompatibilitě. Bez něj se testují
+      // všechna aktivní zařízení přihlášeného uživatele.
+    }
+
+    if (endpoint && endpoint.length > 4096) {
       return NextResponse.json(
-        { error: "Chybí přihlašovací token." },
-        { status: 401 }
+        { error: "Endpoint zařízení je příliš dlouhý." },
+        { status: 400 }
       );
     }
 
-    const authClient = createClient(supabaseUrl, anonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    });
+    let subscriptionsQuery = auth.adminClient
+      .from("push_subscriptions")
+      .select("id, profile_id, endpoint, p256dh, auth, active")
+      .eq("profile_id", auth.user.id)
+      .eq("active", true);
 
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
-    const {
-      data: { user },
-      error: userError,
-    } = await authClient.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        {
-          error:
-            userError?.message ||
-            "Nepodařilo se ověřit přihlášeného uživatele.",
-        },
-        { status: 401 }
-      );
-    }
+    if (endpoint) subscriptionsQuery = subscriptionsQuery.eq("endpoint", endpoint);
 
     const { data: subscriptionsData, error: subscriptionsError } =
-      await adminClient
-        .from("push_subscriptions")
-        .select("id, profile_id, endpoint, p256dh, auth, active")
-        .eq("profile_id", user.id)
-        .eq("active", true);
+      await subscriptionsQuery;
 
     if (subscriptionsError) {
       return NextResponse.json(
         {
-          error: `Nepodařilo se načíst uložená zařízení: ${subscriptionsError.message}`,
+          error: `Nepodařilo se načíst uložené zařízení: ${subscriptionsError.message}`,
         },
         { status: 400 }
       );
@@ -130,7 +82,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Pro tvůj účet není uložené žádné zařízení. Nejdřív klikni na Zapnout upozornění.",
+            "Pro toto zařízení nejsou upozornění zapnutá. Nejdřív je zapni přepínačem.",
         },
         { status: 400 }
       );
@@ -140,8 +92,9 @@ export async function POST(request: NextRequest) {
 
     const payload = JSON.stringify({
       title: "Test upozornění",
-      body: "Push notifikace z aplikace Výtahy Servis fungují.",
+      body: "Push notifikace z aplikace Výtahy DC fungují.",
       url: "/dashboard",
+      tag: `push-test-${Date.now()}`,
     });
 
     let sent = 0;
@@ -176,7 +129,7 @@ export async function POST(request: NextRequest) {
         });
 
         if (statusCode === 404 || statusCode === 410) {
-          await adminClient
+          await auth.adminClient
             .from("push_subscriptions")
             .update({
               active: false,
@@ -197,7 +150,7 @@ export async function POST(request: NextRequest) {
           total: subscriptions.length,
           sent,
         },
-        { status: 400 }
+        { status: 502 }
       );
     }
 
