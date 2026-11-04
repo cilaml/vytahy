@@ -61,6 +61,24 @@ const typeLabels: Record<ActionType, string> = {
   jine: "Jiné",
 };
 
+function isSuggestedTitle(value: string) {
+  return (Object.values(typeLabels) as string[]).some(
+    (label) => value === label || value.startsWith(`${label} – `)
+  );
+}
+
+function suggestedTitle(type: ActionType, elevator = "") {
+  const label = typeLabels[type];
+  return elevator ? `${label} – ${elevator}` : label;
+}
+
+function twoHoursAfter(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return `${String(Math.min((hours || 0) + 2, 23)).padStart(2, "0")}:${String(
+    minutes || 0
+  ).padStart(2, "0")}`;
+}
+
 const typeColors: Record<ActionType, string> = {
   servis: "#3478f6",
   porucha: "#e34a4a",
@@ -118,7 +136,7 @@ function noteFromDescription(description: string | null) {
 
 function emptyForm(date: string): ActionForm {
   return {
-    title: "",
+    title: suggestedTitle("servis"),
     action_type: "servis",
     date,
     start: "08:00",
@@ -243,7 +261,24 @@ export default function PlannedActionsPage() {
       ...current,
       elevator_id: elevator.id,
       address: current.address || elevator.address,
-      title: current.title || elevator.label,
+      title:
+        !current.title.trim() || isSuggestedTitle(current.title)
+          ? suggestedTitle(current.action_type, elevator.label)
+          : current.title,
+    }));
+  }
+
+  function changeActionType(actionType: ActionType) {
+    setForm((current) => ({
+      ...current,
+      action_type: actionType,
+      title:
+        !current.title.trim() || isSuggestedTitle(current.title)
+          ? suggestedTitle(
+              actionType,
+              current.elevator_id ? elevatorQuery.split(" — ").at(-1) : ""
+            )
+          : current.title,
     }));
   }
 
@@ -494,43 +529,49 @@ export default function PlannedActionsPage() {
       {success && <div className="planning-notice success">{success}</div>}
 
       <section className={`planning-layout ${canManagePlanning ? "" : "read-only"}`} id="planning-calendar">
-        {canManagePlanning && <form className="planning-panel planning-form" onSubmit={saveAction}>
+        {canManagePlanning && <form key={editingActionId ?? "new"} className="planning-panel planning-form" onSubmit={saveAction}>
           <div className="planning-panel-head">
             <div><h2>{editingActionId ? "Upravit akci" : "Nová akce"}</h2><p>Výtah lze vyhledat, napsat ručně nebo úplně vynechat.</p></div>
             {editingActionId && <button type="button" className="planning-small-secondary" onClick={() => resetForm()}>Zrušit úpravu</button>}
           </div>
 
-          <label>Název<input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Např. výměna rozvaděče" /></label>
+          <label>Co se bude dělat<input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Např. výměna rozvaděče" /></label>
           <div className="planning-form-grid two">
-            <label>Typ<select value={form.action_type} onChange={(event) => setForm({ ...form, action_type: event.target.value as ActionType })}>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>Typ<select value={form.action_type} onChange={(event) => changeActionType(event.target.value as ActionType)}>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label>Výtah – volitelný<div className="planning-combobox"><input value={elevatorQuery} onChange={(event) => { setElevatorQuery(event.target.value); setForm({ ...form, elevator_id: "" }); }} placeholder="Hledej adresu/označení nebo napiš vlastní…" />{elevatorSuggestions.length > 0 && <div className="planning-suggestions">{elevatorSuggestions.map((elevator) => <button type="button" key={elevator.id} onClick={() => chooseElevator(elevator)}><strong>{elevator.address}</strong><span>{elevator.label}</span></button>)}</div>}</div><small>{form.elevator_id ? "Vybraný výtah je propojený s databází." : elevatorQuery ? "Text se uloží jako výtah mimo databázi." : "Akce může zůstat bez výtahu."}</small></label>
           </div>
 
-          <label>Stav práce<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as ActionStatus })}>{(Object.keys(statusLabels) as ActionStatus[]).map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></label>
-
           <div className="planning-form-grid three">
             <label>Datum<input required type="date" value={form.date} onChange={(event) => { setForm({ ...form, date: event.target.value }); setSelectedDate(event.target.value); const date = new Date(`${event.target.value}T12:00:00`); setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1)); }} /></label>
-            <label>Od<input required type="time" value={form.start} onChange={(event) => setForm({ ...form, start: event.target.value })} /></label>
+            <label>Od<input required type="time" value={form.start} onChange={(event) => { const start = event.target.value; setForm({ ...form, start, end: twoHoursAfter(start) }); }} /></label>
             <label>Do<input required type="time" value={form.end} onChange={(event) => setForm({ ...form, end: event.target.value })} /></label>
           </div>
-
-          <label>Adresa – volitelná<input value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Doplní se z uloženého výtahu, nebo ji napiš ručně" /></label>
-          <div className="planning-form-grid two"><label>Kontakt<input value={form.contact_name} onChange={(event) => setForm({ ...form, contact_name: event.target.value })} /></label><label>Telefon<input value={form.contact_phone} onChange={(event) => setForm({ ...form, contact_phone: event.target.value })} /></label></div>
-          <label>Poznámka<textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
 
           <fieldset>
             <legend>Přiřazení zaměstnanců – volitelné</legend>
             <div className="planning-people">{profiles.map((profile) => <label key={profile.id}><input type="checkbox" checked={selectedAssignees.includes(profile.id)} onChange={() => toggleId(profile.id, setSelectedAssignees)} /><i style={{ background: profile.calendar_color }} />{profile.full_name}</label>)}</div>
           </fieldset>
 
-          <fieldset>
-            <legend>Kdo akci uvidí</legend>
-            <div className="planning-visibility-choice">
-              <label><input type="radio" name="visibility" checked={form.visibility === "all"} onChange={() => setForm({ ...form, visibility: "all" })} /><span><strong>Všichni</strong><small>Akce se ukáže všem zaměstnancům.</small></span></label>
-              <label><input type="radio" name="visibility" checked={form.visibility === "selected"} onChange={() => setForm({ ...form, visibility: "selected" })} /><span><strong>Jen vybraní</strong><small>Přiřazení lidé ji uvidí vždy.</small></span></label>
+          <details
+            className="planning-extra"
+            open={editingActionId ? true : undefined}
+          >
+            <summary>Další údaje <span>kontakt, poznámka a viditelnost</span></summary>
+            <div className="planning-extra-content">
+              {editingActionId && <label>Stav práce<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as ActionStatus })}>{(Object.keys(statusLabels) as ActionStatus[]).map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></label>}
+              <label>Adresa – volitelná<input value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Doplní se z uloženého výtahu" /></label>
+              <div className="planning-form-grid two"><label>Kontakt<input value={form.contact_name} onChange={(event) => setForm({ ...form, contact_name: event.target.value })} /></label><label>Telefon<input value={form.contact_phone} onChange={(event) => setForm({ ...form, contact_phone: event.target.value })} /></label></div>
+              <label>Poznámka<textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+              <fieldset>
+                <legend>Kdo akci uvidí</legend>
+                <div className="planning-visibility-choice">
+                  <label><input type="radio" name="visibility" checked={form.visibility === "all"} onChange={() => setForm({ ...form, visibility: "all" })} /><span><strong>Všichni</strong><small>Akce se ukáže všem zaměstnancům.</small></span></label>
+                  <label><input type="radio" name="visibility" checked={form.visibility === "selected"} onChange={() => setForm({ ...form, visibility: "selected" })} /><span><strong>Jen vybraní</strong><small>Přiřazení lidé ji uvidí vždy.</small></span></label>
+                </div>
+                {form.visibility === "selected" && <div className="planning-people planning-viewers">{profiles.map((profile) => <label key={profile.id}><input type="checkbox" checked={selectedViewers.includes(profile.id)} onChange={() => toggleId(profile.id, setSelectedViewers)} /><i style={{ background: profile.calendar_color }} />{profile.full_name}</label>)}</div>}
+              </fieldset>
             </div>
-            {form.visibility === "selected" && <div className="planning-people planning-viewers">{profiles.map((profile) => <label key={profile.id}><input type="checkbox" checked={selectedViewers.includes(profile.id)} onChange={() => toggleId(profile.id, setSelectedViewers)} /><i style={{ background: profile.calendar_color }} />{profile.full_name}</label>)}</div>}
-          </fieldset>
+          </details>
 
           <button className="planning-primary" disabled={saving}>{saving ? "Ukládám…" : editingActionId ? "Uložit změny" : "Přidat akci"}</button>
         </form>}

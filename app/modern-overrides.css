@@ -52,9 +52,8 @@
 }
 
 .global-tool-button > span {
-  font-size: 24px;
+  font-size: 18px;
   line-height: 1;
-  transform: rotate(45deg);
 }
 
 .global-tool-button b {
@@ -145,6 +144,22 @@
 .global-notification-list {
   max-height: 430px;
   overflow: auto;
+}
+
+.global-notification-settings {
+  display: block;
+  padding: 13px 17px;
+  border-top: 1px solid #e7edf0;
+  background: #fff;
+  color: #078043;
+  font-size: 13px;
+  font-weight: 900;
+  text-align: center;
+  text-decoration: none;
+}
+
+.global-notification-settings:hover {
+  background: #f1f8f4;
 }
 
 .global-notification-list > button {
@@ -253,6 +268,31 @@
   color: #173047;
   text-align: left;
   cursor: pointer;
+}
+
+.profile-notifications-link {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 11px;
+  border-radius: 11px;
+  color: #294052;
+  text-decoration: none;
+}
+
+.profile-notifications-link:hover {
+  background: #f1f8f4;
+}
+
+.profile-notifications-link > span:first-child {
+  font-size: 18px;
+}
+
+.profile-notifications-link > span:last-child {
+  display: grid;
+  gap: 2px;
 }
 
 .profile-install-button:hover {
@@ -445,6 +485,7 @@
 
 .global-form-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .global-form-grid.three { grid-template-columns: 1.2fr 1fr; }
+.global-form-grid.compact { grid-template-columns: 1.25fr repeat(3, minmax(95px, .75fr)); }
 
 .global-combobox { position: relative; }
 
@@ -482,6 +523,58 @@
   padding: 13px;
   border: 1px solid #dce6eb;
   border-radius: 12px;
+}
+
+.global-form-section {
+  margin: 4px 0 13px;
+  overflow: hidden;
+  border: 1px solid #dce6eb;
+  border-radius: 12px;
+  background: #f8fafb;
+}
+
+.global-form-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 13px;
+  color: #294052;
+  font-size: 13px;
+  font-weight: 900;
+  list-style: none;
+  cursor: pointer;
+}
+
+.global-form-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.global-form-section > summary::after {
+  content: "+";
+  color: #079447;
+  font-size: 20px;
+}
+
+.global-form-section[open] > summary::after {
+  content: "−";
+}
+
+.global-form-section > summary span {
+  margin-left: auto;
+  color: #718195;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.global-form-section > label,
+.global-form-section > .global-employee-grid {
+  margin-right: 12px;
+  margin-left: 12px;
+}
+
+.global-form-section > .global-employee-grid {
+  margin-bottom: 12px;
 }
 
 .global-action-modal legend {
@@ -543,6 +636,83 @@
   background: #fff1f1;
   color: #ac2929;
   font-weight: 800;
+}
+
+/* Jednotné progresivní formuláře plánování */
+.planning-extra {
+  margin: 3px 0 16px;
+  overflow: hidden;
+  border: 1px solid #dce6eb;
+  border-radius: 12px;
+  background: #f8fafb;
+}
+
+.planning-extra > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 13px;
+  color: #294052;
+  font-size: 13px;
+  font-weight: 900;
+  list-style: none;
+  cursor: pointer;
+}
+
+.planning-extra > summary::-webkit-details-marker {
+  display: none;
+}
+
+.planning-extra > summary::after {
+  content: "+";
+  color: #079447;
+  font-size: 20px;
+}
+
+.planning-extra[open] > summary::after {
+  content: "−";
+}
+
+.planning-extra > summary span {
+  margin-left: auto;
+  color: #718195;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.planning-extra-content {
+  padding: 0 12px 12px;
+}
+
+.planning-extra-content > fieldset:last-child {
+  margin-bottom: 0;
+}
+
+.planning-status-badge.planovano {
+  background: #f1f5f7 !important;
+  color: #52697b !important;
+}
+
+.planning-status-badge.potvrzeno,
+.planning-status-badge.na_ceste {
+  background: #edf4ff !important;
+  color: #245ca8 !important;
+}
+
+.planning-status-badge.rozpracovano {
+  background: #fff5e8 !important;
+  color: #8a540f !important;
+}
+
+.planning-status-badge.hotovo {
+  background: #e9f8ef !important;
+  color: #086b38 !important;
+}
+
+.planning-status-badge.zruseno {
+  background: #f1f5f7 !important;
+  color: #718195 !important;
 }
 
 /* Moderní vzhled stránek, které stále používají vlastní staré styly */
@@ -699,6 +869,7 @@
 
   .global-form-grid.two,
   .global-form-grid.three,
+  .global-form-grid.compact,
   .global-employee-grid {
     grid-template-columns: 1fr;
   }

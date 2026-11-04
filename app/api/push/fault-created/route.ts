@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import webpush from "web-push";
+import {
+  defaultPermissionsForRole,
+  hasAccess,
+  type AccessLevel,
+  type AppModule,
+  type UserRole,
+} from "@/lib/permissions";
+import {
+  getErrorMessage,
+  getErrorStatusCode,
+  requirePushUser,
+} from "@/lib/server/push-auth";
 
 export const runtime = "nodejs";
 
 type FaultRow = {
   id: string;
-  elevator_id: string;
+  elevator_id: string | null;
   region_id: string | null;
   priority: string;
   status: string;
@@ -20,8 +31,14 @@ type FaultAssigneeRow = {
 
 type ProfileRow = {
   id: string;
-  role: string;
+  role: UserRole;
   active: boolean;
+};
+
+type PermissionRow = {
+  profile_id: string;
+  module: AppModule;
+  access_level: AccessLevel;
 };
 
 type PushSubscriptionRow = {
@@ -33,95 +50,43 @@ type PushSubscriptionRow = {
   active: boolean;
 };
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
+const dispatcherRoles: UserRole[] = [
+  "admin",
+  "vedouci_technik",
+  "sekretariat",
+];
 
-  if (typeof error === "object" && error !== null) {
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return "Neznámá objektová chyba.";
-    }
-  }
+function effectiveAccess(
+  profile: ProfileRow,
+  permissionRows: PermissionRow[],
+  appModule: AppModule
+) {
+  if (profile.role === "admin") return "manage" as const;
 
-  return String(error);
-}
-
-function getErrorStatusCode(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "statusCode" in error &&
-    typeof (error as { statusCode?: unknown }).statusCode === "number"
-  ) {
-    return (error as { statusCode: number }).statusCode;
-  }
-
-  return null;
+  return (
+    permissionRows.find(
+      (permission) =>
+        permission.profile_id === profile.id && permission.module === appModule
+    )?.access_level ?? defaultPermissionsForRole(profile.role)[appModule]
+  );
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const auth = await requirePushUser(request, {
+      module: "faults",
+      level: "manage",
+    });
+    if (!auth.ok) return auth.response;
 
     const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
     const vapidSubject = process.env.VAPID_SUBJECT;
 
-    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      return NextResponse.json(
-        { error: "Chybí Supabase env proměnné." },
-        { status: 500 }
-      );
-    }
-
     if (!vapidPublicKey || !vapidPrivateKey || !vapidSubject) {
       return NextResponse.json(
-        { error: "Chybí VAPID env proměnné." },
+        { error: "Chybí VAPID nastavení serveru." },
         { status: 500 }
-      );
-    }
-
-    const authorizationHeader = request.headers.get("authorization");
-    const token = authorizationHeader?.replace("Bearer ", "");
-
-    if (!token) {
-      return NextResponse.json(
-        { error: "Chybí přihlašovací token." },
-        { status: 401 }
-      );
-    }
-
-    const authClient = createClient(supabaseUrl, anonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    });
-
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
-    const {
-      data: { user },
-      error: userError,
-    } = await authClient.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        {
-          error:
-            userError?.message ||
-            "Nepodařilo se ověřit přihlášeného uživatele.",
-        },
-        { status: 401 }
       );
     }
 
@@ -136,7 +101,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const faultId = body.fault_id;
+    const faultId = body.fault_id?.trim();
 
     if (!faultId) {
       return NextResponse.json(
@@ -145,7 +110,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: faultData, error: faultError } = await adminClient
+    // Nejdřív se porucha načte klientem uživatele. Tím se uplatní stejná RLS
+    // viditelnost jako na stránce Poruchy a service role ji nemůže obejít.
+    const { data: visibleFault, error: visibleFaultError } =
+      await auth.authClient
+        .from("faults")
+        .select("id, created_by")
+        .eq("id", faultId)
+        .maybeSingle();
+
+    if (visibleFaultError || !visibleFault) {
+      return NextResponse.json(
+        { error: "Tuto poruchu nemůžeš použít pro rozeslání upozornění." },
+        { status: 403 }
+      );
+    }
+
+    const { data: callerProfileData, error: callerProfileError } =
+      await auth.adminClient
+        .from("profiles")
+        .select("id, role, active")
+        .eq("id", auth.user.id)
+        .eq("active", true)
+        .maybeSingle();
+
+    if (callerProfileError || !callerProfileData) {
+      return NextResponse.json(
+        { error: "Aktivní profil uživatele nebyl nalezen." },
+        { status: 403 }
+      );
+    }
+
+    const callerProfile = callerProfileData as ProfileRow;
+    const isDispatcher = dispatcherRoles.includes(callerProfile.role);
+
+    if (!isDispatcher && visibleFault.created_by !== auth.user.id) {
+      return NextResponse.json(
+        { error: "Upozornění k poruše může rozeslat její autor nebo dispečink." },
+        { status: 403 }
+      );
+    }
+
+    const { data: faultData, error: faultError } = await auth.adminClient
       .from("faults")
       .select(
         "id, elevator_id, region_id, priority, status, main_technician_id, created_by"
@@ -157,20 +163,55 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            faultError?.message || "Porucha pro odeslání upozornění nenalezena.",
+            faultError?.message || "Porucha pro upozornění nebyla nalezena.",
         },
         { status: 404 }
       );
     }
 
     const fault = faultData as FaultRow;
+    const eventKey = `fault-created:${fault.id}`;
 
-    const { data: assigneesData, error: assigneesError } = await adminClient
-      .from("fault_assignees")
-      .select("profile_id")
-      .eq("fault_id", fault.id);
+    const { error: eventError } = await auth.adminClient
+      .from("push_notification_events")
+      .insert({
+        event_key: eventKey,
+        event_type: "fault_created",
+        source_id: fault.id,
+        created_by: auth.user.id,
+      });
+
+    if (eventError?.code === "23505") {
+      return NextResponse.json({
+        ok: true,
+        duplicate: true,
+        sent: 0,
+        total: 0,
+        message: "Upozornění k této poruše už bylo rozesláno.",
+      });
+    }
+
+    if (eventError) {
+      return NextResponse.json(
+        {
+          error: `Nepodařilo se evidovat rozeslání: ${eventError.message}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const { data: assigneesData, error: assigneesError } =
+      await auth.adminClient
+        .from("fault_assignees")
+        .select("profile_id")
+        .eq("fault_id", fault.id);
 
     if (assigneesError) {
+      await auth.adminClient
+        .from("push_notification_events")
+        .delete()
+        .eq("event_key", eventKey);
+
       return NextResponse.json(
         {
           error: `Nepodařilo se načíst přiřazené techniky: ${assigneesError.message}`,
@@ -182,13 +223,18 @@ export async function POST(request: NextRequest) {
     const assignees = (assigneesData ?? []) as FaultAssigneeRow[];
 
     const { data: officeProfilesData, error: officeProfilesError } =
-      await adminClient
+      await auth.adminClient
         .from("profiles")
         .select("id, role, active")
         .eq("active", true)
-        .in("role", ["admin", "vedouci_technik", "sekretariat"]);
+        .in("role", dispatcherRoles);
 
     if (officeProfilesError) {
+      await auth.adminClient
+        .from("push_notification_events")
+        .delete()
+        .eq("event_key", eventKey);
+
       return NextResponse.json(
         {
           error: `Nepodařilo se načíst uživatele pro upozornění: ${officeProfilesError.message}`,
@@ -197,19 +243,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const officeProfiles = (officeProfilesData ?? []) as ProfileRow[];
-
-    const recipientIds = Array.from(
+    const candidateIds = Array.from(
       new Set(
         [
-          ...officeProfiles.map((profile) => profile.id),
+          ...(officeProfilesData ?? []).map((profile) => profile.id),
           fault.main_technician_id,
           ...assignees.map((assignee) => assignee.profile_id),
         ].filter(Boolean) as string[]
       )
     );
 
-    if (recipientIds.length === 0) {
+    if (candidateIds.length === 0) {
       return NextResponse.json({
         ok: true,
         sent: 0,
@@ -218,14 +262,72 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const [{ data: profilesData, error: profilesError }, permissionsResult] =
+      await Promise.all([
+        auth.adminClient
+          .from("profiles")
+          .select("id, role, active")
+          .in("id", candidateIds)
+          .eq("active", true),
+        auth.adminClient
+          .from("user_module_permissions")
+          .select("profile_id, module, access_level")
+          .in("profile_id", candidateIds)
+          .in("module", ["faults", "notifications"]),
+      ]);
+
+    if (profilesError || permissionsResult.error) {
+      await auth.adminClient
+        .from("push_notification_events")
+        .delete()
+        .eq("event_key", eventKey);
+
+      return NextResponse.json(
+        {
+          error:
+            profilesError?.message ||
+            permissionsResult.error?.message ||
+            "Nepodařilo se ověřit příjemce upozornění.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const profiles = (profilesData ?? []) as ProfileRow[];
+    const permissionRows = (permissionsResult.data ?? []) as PermissionRow[];
+    const recipientIds = profiles
+      .filter(
+        (profile) =>
+          hasAccess(effectiveAccess(profile, permissionRows, "faults"), "view") &&
+          hasAccess(
+            effectiveAccess(profile, permissionRows, "notifications"),
+            "view"
+          )
+      )
+      .map((profile) => profile.id);
+
+    if (recipientIds.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        sent: 0,
+        total: 0,
+        message: "Příjemci nemají povolené upozornění na poruchy.",
+      });
+    }
+
     const { data: subscriptionsData, error: subscriptionsError } =
-      await adminClient
+      await auth.adminClient
         .from("push_subscriptions")
         .select("id, profile_id, endpoint, p256dh, auth, active")
         .in("profile_id", recipientIds)
         .eq("active", true);
 
     if (subscriptionsError) {
+      await auth.adminClient
+        .from("push_notification_events")
+        .delete()
+        .eq("event_key", eventKey);
+
       return NextResponse.json(
         {
           error: `Nepodařilo se načíst uložená zařízení: ${subscriptionsError.message}`,
@@ -241,22 +343,20 @@ export async function POST(request: NextRequest) {
         ok: true,
         sent: 0,
         total: 0,
-        message: "Cíloví uživatelé nemají zapnuté upozornění.",
+        message: "Cíloví uživatelé nemají na telefonu zapnutá upozornění.",
       });
     }
 
     webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
 
     const payload = JSON.stringify({
-      title:
-        fault.priority === "uvizle_osoby"
-          ? "Uvízlé osoby"
-          : "Nová porucha",
+      title: fault.priority === "uvizle_osoby" ? "Uvízlé osoby" : "Nová porucha",
       body:
         fault.priority === "uvizle_osoby"
           ? "Byla založena urgentní porucha s uvízlými osobami."
           : "Byla vytvořena nová porucha. Otevři aplikaci.",
       url: "/faults",
+      tag: `fault-${fault.id}`,
     });
 
     let sent = 0;
@@ -293,7 +393,7 @@ export async function POST(request: NextRequest) {
         });
 
         if (statusCode === 404 || statusCode === 410) {
-          await adminClient
+          await auth.adminClient
             .from("push_subscriptions")
             .update({
               active: false,
@@ -302,6 +402,24 @@ export async function POST(request: NextRequest) {
             .eq("id", subscription.id);
         }
       }
+    }
+
+    if (sent === 0 && errors.length > 0) {
+      // Když selhal celý poskytovatel push, dovolíme bezpečný pozdější pokus.
+      await auth.adminClient
+        .from("push_notification_events")
+        .delete()
+        .eq("event_key", eventKey);
+
+      return NextResponse.json(
+        {
+          error: errors[0]?.message || "Nepodařilo se odeslat upozornění.",
+          sent,
+          total: subscriptions.length,
+          errors,
+        },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json({

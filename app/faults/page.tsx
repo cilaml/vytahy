@@ -64,6 +64,8 @@ type Fault = {
   priority: FaultPriority;
   status: FaultStatus;
   description: string;
+  fault_date: string;
+  is_on_call: boolean;
   created_by: string | null;
   main_technician_id: string | null;
   created_at: string;
@@ -90,6 +92,8 @@ type FaultForm = {
   elevator_id: string;
   priority: FaultPriority;
   description: string;
+  fault_date: string;
+  is_on_call: boolean;
   main_technician_id: string;
   helper_ids: string[];
   note: string;
@@ -99,10 +103,25 @@ const emptyForm: FaultForm = {
   elevator_id: "",
   priority: "bezna",
   description: "",
+  fault_date: "",
+  is_on_call: false,
   main_technician_id: "",
   helper_ids: [],
   note: "",
 };
+
+function todayDateKey() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatCzechDate(value: string) {
+  const [year, month, day] = value.split("-");
+  return year && month && day ? `${day}.${month}.${year}` : value;
+}
 
 const roleLabels: Record<UserRole, string> = {
   admin: "Admin",
@@ -143,6 +162,33 @@ const activeStatuses: FaultStatus[] = [
   "ceka_na_zakaznika",
 ];
 
+const waitingStatuses: FaultStatus[] = [
+  "ceka_na_dil",
+  "ceka_na_spravce",
+  "ceka_na_pristup",
+  "ceka_na_zakaznika",
+];
+
+const priorityTone: Record<FaultPriority, string> = {
+  bezna: "neutral",
+  dulezita: "warning",
+  odstavka: "danger",
+  uvizle_osoby: "danger strong",
+};
+
+const statusTone: Record<FaultStatus, string> = {
+  nova: "danger",
+  prirazeno: "info",
+  na_ceste: "info",
+  rozpracovano: "warning",
+  ceka_na_dil: "waiting",
+  ceka_na_spravce: "waiting",
+  ceka_na_pristup: "waiting",
+  ceka_na_zakaznika: "waiting",
+  hotovo: "success",
+  archivovano: "neutral",
+};
+
 export default function FaultsPage() {
   const { canManage } = useAccessControl();
   const canManageFaults = canManage("faults");
@@ -174,6 +220,7 @@ export default function FaultsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingStatusId, setSavingStatusId] = useState<string | null>(null);
 
   const [message, setMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -491,8 +538,9 @@ export default function FaultsPage() {
       supabase
         .from("faults")
         .select(
-          "id, elevator_id, custom_elevator_label, region_id, priority, status, description, created_by, main_technician_id, created_at, finished_at, archived_at"
+          "id, elevator_id, custom_elevator_label, region_id, priority, status, description, fault_date, is_on_call, created_by, main_technician_id, created_at, finished_at, archived_at"
         )
+        .order("fault_date", { ascending: false })
         .order("created_at", { ascending: false }),
 
       supabase.from("fault_assignees").select("id, fault_id, profile_id, role"),
@@ -571,6 +619,7 @@ export default function FaultsPage() {
     setForm({
       ...emptyForm,
       priority: priority ?? "bezna",
+      fault_date: todayDateKey(),
       main_technician_id: isDispatcher ? "" : currentProfile?.id ?? "",
     });
 
@@ -601,6 +650,8 @@ export default function FaultsPage() {
       elevator_id: fault.elevator_id ?? "",
       priority: fault.priority,
       description: fault.description,
+      fault_date: fault.fault_date,
+      is_on_call: fault.is_on_call,
       main_technician_id: fault.main_technician_id ?? "",
       helper_ids: helpers,
       note: "",
@@ -626,8 +677,56 @@ export default function FaultsPage() {
   }
 
   function selectElevator(elevator: Elevator) {
-    updateForm("elevator_id", elevator.id);
+    const matchingTechnicians = profiles.filter(
+      (profile) =>
+        profile.active &&
+        elevator.region_id &&
+        profile.primary_region_id === elevator.region_id
+    );
+
+    setForm((current) => ({
+      ...current,
+      elevator_id: elevator.id,
+      main_technician_id:
+        isDispatcher &&
+        !current.main_technician_id &&
+        matchingTechnicians.length === 1
+          ? matchingTechnicians[0].id
+          : current.main_technician_id,
+    }));
     setElevatorQuery(`${elevator.address} — ${elevator.label}`);
+  }
+
+  function getNextFaultStep(fault: Fault): {
+    status: FaultStatus;
+    label: string;
+    tone: "primary" | "success";
+  } | null {
+    if (["nova", "prirazeno"].includes(fault.status)) {
+      return { status: "na_ceste", label: "Vyjet na poruchu", tone: "primary" };
+    }
+
+    if (fault.status === "na_ceste") {
+      return {
+        status: "rozpracovano",
+        label: "Jsem na místě – začít práci",
+        tone: "primary",
+      };
+    }
+
+    if (waitingStatuses.includes(fault.status)) {
+      return {
+        status: "rozpracovano",
+        label: "Pokračovat v práci",
+        tone: "primary",
+      };
+    }
+
+    if (fault.status === "rozpracovano") {
+      return { status: "hotovo", label: "Dokončit poruchu", tone: "success" };
+    }
+
+    return null;
   }
 
   function toggleHelper(technicianId: string) {
@@ -643,55 +742,69 @@ export default function FaultsPage() {
     });
   }
 
-  async function notifyFaultCreated(faultId: string) {
-  try {
-    const supabase = createClient();
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.access_token) {
-      console.warn("Push upozornění se neposlalo: chybí session token.");
-      return;
-    }
-
-    console.log("Odesílám push upozornění pro poruchu:", faultId);
-
-    const pushResponse = await fetch("/api/push/fault-created", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        fault_id: faultId,
-      }),
-    });
-
-    const pushText = await pushResponse.text();
-
-    let pushResult: unknown = pushText;
-
+  async function notifyFaultCreated(faultId: string): Promise<{
+    ok: boolean;
+    sent: number;
+    total: number;
+    message?: string;
+    error?: string;
+  }> {
     try {
-      pushResult = pushText ? JSON.parse(pushText) : {};
-    } catch {
-      pushResult = pushText;
-    }
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    console.log("Výsledek push upozornění:", {
-      status: pushResponse.status,
-      ok: pushResponse.ok,
-      result: pushResult,
-    });
+      if (!session?.access_token) {
+        return {
+          ok: false,
+          sent: 0,
+          total: 0,
+          error: "chybí přihlašovací token",
+        };
+      }
 
-    if (!pushResponse.ok) {
-      console.warn("Push upozornění se nepovedlo odeslat:", pushResult);
+      const pushResponse = await fetch("/api/push/fault-created", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ fault_id: faultId }),
+      });
+
+      const pushText = await pushResponse.text();
+      let pushResult: {
+        ok?: boolean;
+        sent?: number;
+        total?: number;
+        message?: string;
+        error?: string;
+      } = {};
+
+      try {
+        pushResult = pushText ? JSON.parse(pushText) : {};
+      } catch {
+        pushResult = { error: pushText || `HTTP ${pushResponse.status}` };
+      }
+
+      return {
+        ok: pushResponse.ok && pushResult.ok === true,
+        sent: pushResult.sent ?? 0,
+        total: pushResult.total ?? 0,
+        message: pushResult.message,
+        error: pushResult.error,
+      };
+    } catch (pushError) {
+      return {
+        ok: false,
+        sent: 0,
+        total: 0,
+        error:
+          pushError instanceof Error ? pushError.message : "neznámá chyba",
+      };
     }
-  } catch (pushError) {
-    console.warn("Push upozornění se nepovedlo odeslat:", pushError);
   }
-}
 
   async function saveFault(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -722,6 +835,12 @@ export default function FaultsPage() {
 
     if (form.priority !== "uvizle_osoby" && !description) {
       setMessage("U běžné poruchy vyplň popis.");
+      setSuccessMessage("");
+      return;
+    }
+
+    if (!form.fault_date) {
+      setMessage("Vyber datum poruchy.");
       setSuccessMessage("");
       return;
     }
@@ -758,6 +877,8 @@ export default function FaultsPage() {
           region_id: selectedElevator?.region_id ?? null,
           priority: form.priority,
           description,
+          fault_date: form.fault_date,
+          is_on_call: form.is_on_call,
           main_technician_id: effectiveMainTechnicianId || null,
           updated_at: new Date().toISOString(),
         })
@@ -858,6 +979,8 @@ export default function FaultsPage() {
         priority: form.priority,
         status,
         description,
+        fault_date: form.fault_date,
+        is_on_call: form.is_on_call,
         created_by: currentProfile.id,
         main_technician_id: effectiveMainTechnicianId || null,
       });
@@ -924,11 +1047,28 @@ export default function FaultsPage() {
       }
     }
 
-    await notifyFaultCreated(faultId);
+    const pushResult = await notifyFaultCreated(faultId);
 
     setSaving(false);
     resetForm();
-    setSuccessMessage("Porucha byla založena. Upozornění bylo odesláno.");
+    if (pushResult.ok && pushResult.sent > 0) {
+      setSuccessMessage(
+        `Porucha byla založena. Upozornění odesláno na ${pushResult.sent}/${pushResult.total} zařízení.`
+      );
+    } else if (pushResult.ok) {
+      setSuccessMessage(
+        `Porucha byla založena. ${
+          pushResult.message || "Žádný příjemce nemá zapnutá upozornění."
+        }`
+      );
+    } else {
+      setSuccessMessage("Porucha byla založena.");
+      setMessage(
+        `Upozornění se nepodařilo odeslat: ${
+          pushResult.error || "neznámá chyba"
+        }`
+      );
+    }
     await loadData();
   }
 
@@ -955,6 +1095,7 @@ export default function FaultsPage() {
     }
 
     setMessage("");
+    setSavingStatusId(fault.id);
     setSuccessMessage("Ukládám změnu stavu...");
 
     const supabase = createClient();
@@ -964,12 +1105,19 @@ export default function FaultsPage() {
     });
 
     if (error) {
+      setSavingStatusId(null);
       setSuccessMessage("");
       setMessage(`Chyba při změně stavu: ${error.message}`);
       return;
     }
 
-    setSuccessMessage("Stav poruchy byl změněn.");
+    setFaults((current) =>
+      current.map((item) =>
+        item.id === fault.id ? { ...item, status } : item
+      )
+    );
+    setSavingStatusId(null);
+    setSuccessMessage(`Stav změněn na „${statusLabels[status]}“.`);
     await loadData();
   }
 
@@ -1238,31 +1386,29 @@ export default function FaultsPage() {
                   </select>
                 </label>
 
-                {isDispatcher && <label className="field">
-                  <span>Hlavní technik</span>
-                  <select
-                    value={form.main_technician_id}
-                    onChange={(event) => {
-                      const mainId = event.target.value;
-
-                      setForm((current) => ({
-                        ...current,
-                        main_technician_id: mainId,
-                        helper_ids: current.helper_ids.filter(
-                          (id) => id !== mainId
-                        ),
-                      }));
-                    }}
+                <label className="field">
+                  <span>Datum poruchy</span>
+                  <input
+                    type="date"
+                    value={form.fault_date}
+                    onChange={(event) =>
+                      updateForm("fault_date", event.target.value)
+                    }
                     className="input"
-                  >
-                    <option value="">Nepřiřazen</option>
-                    {sortedTechniciansForSelectedElevator.map((technician) => (
-                      <option key={technician.id} value={technician.id}>
-                        {technician.full_name}
-                      </option>
-                    ))}
-                  </select>
-                </label>}
+                    required
+                  />
+                </label>
+
+                <label className="on-call-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={form.is_on_call}
+                    onChange={(event) =>
+                      updateForm("is_on_call", event.target.checked)
+                    }
+                  />
+                  <span>Pohotovost</span>
+                </label>
               </div>
 
               <label className="field">
@@ -1286,45 +1432,104 @@ export default function FaultsPage() {
                 />
               </label>
 
-              {isDispatcher && <div className="helpers-box">
-                <span>Spolupracující technici</span>
+              <details
+                className="fault-extra"
+                open={editingFaultId ? true : undefined}
+              >
+                <summary>
+                  <span>Další údaje</span>
+                  <small>
+                    {isDispatcher
+                      ? "technik, spolupracovníci a poznámka"
+                      : "volitelná poznámka"}
+                  </small>
+                </summary>
 
-                <div className="helpers-list">
-                  {sortedTechniciansForSelectedElevator.map((technician) => {
-                    const isMain = form.main_technician_id === technician.id;
+                <div className="fault-extra-content">
+                  {isDispatcher && (
+                    <label className="field">
+                      <span>Hlavní technik</span>
+                      <select
+                        value={form.main_technician_id}
+                        onChange={(event) => {
+                          const mainId = event.target.value;
 
-                    return (
-                      <label
-                        key={technician.id}
-                        className={isMain ? "check-row muted" : "check-row"}
+                          setForm((current) => ({
+                            ...current,
+                            main_technician_id: mainId,
+                            helper_ids: current.helper_ids.filter(
+                              (id) => id !== mainId
+                            ),
+                          }));
+                        }}
+                        className="input"
                       >
-                        <input
-                          type="checkbox"
-                          disabled={isMain}
-                          checked={form.helper_ids.includes(technician.id)}
-                          onChange={() => toggleHelper(technician.id)}
-                        />
-                        {technician.full_name}
-                        {isMain ? " — hlavní technik" : ""}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>}
+                        <option value="">Nepřiřazen</option>
+                        {sortedTechniciansForSelectedElevator.map(
+                          (technician) => (
+                            <option key={technician.id} value={technician.id}>
+                              {technician.full_name}
+                            </option>
+                          )
+                        )}
+                      </select>
+                      {form.main_technician_id && form.elevator_id && (
+                        <small className="prefill-hint">
+                          Technik je předvyplněný podle rajonu, pokud je v něm
+                          právě jeden aktivní technik.
+                        </small>
+                      )}
+                    </label>
+                  )}
 
-              <label className="field">
-                <span>
-                  {editingFaultId
-                    ? "Poznámka do časové osy při úpravě – volitelná"
-                    : "Poznámka do časové osy – volitelná"}
-                </span>
-                <textarea
-                  value={form.note}
-                  onChange={(event) => updateForm("note", event.target.value)}
-                  placeholder="Volitelná poznámka"
-                  className="textarea small"
-                />
-              </label>
+                  {isDispatcher && (
+                    <div className="helpers-box">
+                      <span>Spolupracující technici</span>
+
+                      <div className="helpers-list">
+                        {sortedTechniciansForSelectedElevator.map(
+                          (technician) => {
+                            const isMain =
+                              form.main_technician_id === technician.id;
+
+                            return (
+                              <label
+                                key={technician.id}
+                                className={
+                                  isMain ? "check-row muted" : "check-row"
+                                }
+                              >
+                                <input
+                                  type="checkbox"
+                                  disabled={isMain}
+                                  checked={form.helper_ids.includes(
+                                    technician.id
+                                  )}
+                                  onChange={() => toggleHelper(technician.id)}
+                                />
+                                {technician.full_name}
+                                {isMain ? " — hlavní technik" : ""}
+                              </label>
+                            );
+                          }
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <label className="field">
+                    <span>Poznámka do časové osy – volitelná</span>
+                    <textarea
+                      value={form.note}
+                      onChange={(event) =>
+                        updateForm("note", event.target.value)
+                      }
+                      placeholder="Např. kdo volal nebo co už bylo ověřeno"
+                      className="textarea small"
+                    />
+                  </label>
+                </div>
+              </details>
 
               <div className="form-actions">
                 <button disabled={saving} type="submit" className="primary-action">
@@ -1436,17 +1641,36 @@ export default function FaultsPage() {
       : fault.status === "archivovano"
         ? "archived"
         : "active";
+    const nextStep = getNextFaultStep(fault);
+    const statusSaving = savingStatusId === fault.id;
+    const otherStatuses = ([
+      "na_ceste",
+      "rozpracovano",
+      "ceka_na_dil",
+      "ceka_na_spravce",
+      "ceka_na_pristup",
+      "ceka_na_zakaznika",
+      "hotovo",
+    ] as FaultStatus[]).filter(
+      (status) => status !== fault.status && status !== nextStep?.status
+    );
 
     return (
       <article key={fault.id} className={`fault-card ${stateClass} ${urgent ? "urgent" : ""}`}>
         <div className="fault-main">
           <div>
             <div className="fault-tags">
-              <span className={urgent ? "pill red" : "pill amber"}>
+              <span className={`pill ${priorityTone[fault.priority]}`}>
                 {priorityLabels[fault.priority]}
               </span>
 
-              <span className="pill blue">{statusLabels[fault.status]}</span>
+              <span className={`pill ${statusTone[fault.status]}`}>
+                {statusLabels[fault.status]}
+              </span>
+
+              {fault.is_on_call && (
+                <span className="pill on-call">Pohotovost</span>
+              )}
 
               {(isFaultAssignedToMe(fault) || fault.created_by === currentProfile?.id) && (
                 <span className="pill green">Moje práce</span>
@@ -1458,7 +1682,8 @@ export default function FaultsPage() {
             <p>{fault.description}</p>
 
             <div className="meta-text">
-              Rajon: {getRegionName(fault.region_id)} · Vytvořeno:{" "}
+              Datum poruchy: {formatCzechDate(fault.fault_date)} · Rajon:{" "}
+              {getRegionName(fault.region_id)} · Založeno:{" "}
               {new Date(fault.created_at).toLocaleString("cs-CZ")}
             </div>
           </div>
@@ -1476,76 +1701,109 @@ export default function FaultsPage() {
           </div>
         </div>
 
-        {notes.length > 0 && (
-          <div className="timeline">
-            <strong>Časová osa</strong>
+        {(notes.length > 0 || canWorkOnFault) && (
+          <details className="fault-progress">
+            <summary>
+              Poznámky a průběh
+              {notes.length > 0 && <span>{notes.length}</span>}
+            </summary>
 
-            {notes.map((note) => (
-              <div key={note.id} className="timeline-item">
-                <span>
-                  {new Date(note.created_at).toLocaleString("cs-CZ")} ·{" "}
-                  {getProfileName(note.profile_id)}
-                </span>
-                <p>{note.note}</p>
+            {notes.length > 0 && (
+              <div className="timeline">
+                {notes.map((note) => (
+                  <div key={note.id} className="timeline-item">
+                    <span>
+                      {new Date(note.created_at).toLocaleString("cs-CZ")} ·{" "}
+                      {getProfileName(note.profile_id)}
+                    </span>
+                    <p>{note.note}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            )}
 
-        {canWorkOnFault && (
-          <div className="fault-note-compose">
-            <textarea
-              value={noteDrafts[fault.id] ?? ""}
-              onChange={(event) => setNoteDrafts((current) => ({ ...current, [fault.id]: event.target.value }))}
-              placeholder="Přidat krátkou poznámku k průběhu poruchy…"
-              rows={2}
-            />
-            <button
-              className="secondary-action"
-              disabled={savingNoteId === fault.id || !(noteDrafts[fault.id]?.trim())}
-              onClick={() => void addFaultNote(fault)}
-            >
-              {savingNoteId === fault.id ? "Ukládám…" : "Přidat poznámku"}
-            </button>
-          </div>
+            {canWorkOnFault && (
+              <div className="fault-note-compose">
+                <textarea
+                  value={noteDrafts[fault.id] ?? ""}
+                  onChange={(event) =>
+                    setNoteDrafts((current) => ({
+                      ...current,
+                      [fault.id]: event.target.value,
+                    }))
+                  }
+                  placeholder="Přidat krátkou poznámku k průběhu poruchy…"
+                  rows={2}
+                />
+                <button
+                  className="secondary-action"
+                  disabled={
+                    savingNoteId === fault.id ||
+                    !noteDrafts[fault.id]?.trim()
+                  }
+                  onClick={() => void addFaultNote(fault)}
+                >
+                  {savingNoteId === fault.id
+                    ? "Ukládám…"
+                    : "Přidat poznámku"}
+                </button>
+              </div>
+            )}
+          </details>
         )}
 
         <div className="fault-actions">
-          {canManageFaults && isDispatcher && fault.status !== "archivovano" && <button onClick={() => startEdit(fault)} className="secondary-action">
-            Upravit
-          </button>}
+          {canWorkOnFault && nextStep && (
+            <button
+              onClick={() => void updateFaultStatus(fault, nextStep.status)}
+              className={
+                nextStep.tone === "success"
+                  ? "success-action workflow-next"
+                  : "primary-action workflow-next"
+              }
+              disabled={statusSaving}
+            >
+              {statusSaving ? "Ukládám…" : nextStep.label}
+            </button>
+          )}
 
           {canWorkOnFault && fault.status !== "hotovo" && (
-            <>
-              <button
-                onClick={() => updateFaultStatus(fault, "na_ceste")}
-                className="secondary-action"
-              >
-                Na cestě
-              </button>
-
-              <button
-                onClick={() => updateFaultStatus(fault, "rozpracovano")}
-                className="secondary-action"
-              >
-                Rozpracováno
-              </button>
-
-              <button
-                onClick={() => updateFaultStatus(fault, "hotovo")}
-                className="success-action"
-              >
-                Hotovo
-              </button>
-            </>
+            <details className="fault-status-more">
+              <summary>Jiný stav</summary>
+              <div>
+                {otherStatuses.map((status) => (
+                  <button
+                    type="button"
+                    key={status}
+                    disabled={statusSaving}
+                    onClick={() => void updateFaultStatus(fault, status)}
+                  >
+                    <i className={statusTone[status]} />
+                    {statusLabels[status]}
+                  </button>
+                ))}
+              </div>
+            </details>
           )}
+
+          {canManageFaults &&
+            isDispatcher &&
+            fault.status !== "archivovano" && (
+              <button
+                onClick={() => startEdit(fault)}
+                className="secondary-action"
+              >
+                Upravit údaje
+              </button>
+            )}
 
           {canManageFaults && isDispatcher && fault.status === "hotovo" && (
             <button
               onClick={() => updateFaultStatus(fault, "archivovano")}
               className="secondary-action"
+              disabled={statusSaving}
             >
-              Archivovat
+              {statusSaving ? "Ukládám…" : "Archivovat"}
             </button>
           )}
 
@@ -1779,49 +2037,63 @@ function StyleBlock() {
       .secondary-action,
       .success-action,
       .delete-action {
-        border: 0;
+        border: 1px solid transparent;
         border-radius: 14px;
         padding: 12px 16px;
         font-weight: 900;
         cursor: pointer;
-        color: white;
         text-decoration: none;
       }
 
       .primary-action {
-        background: #2563eb;
+        background: #079447;
+        color: white;
       }
 
       .danger-action {
-        background: #dc2626;
+        background: #d93b3b;
+        color: white;
       }
 
       .secondary-action {
-        background: #334155;
+        border-color: #cbd8df;
+        background: #f7fafb;
+        color: #294052;
       }
 
       .success-action {
-        background: #16a34a;
+        background: #079447;
+        color: white;
       }
 
       .delete-action {
-        background: #7f1d1d;
-        color: #fecaca;
+        border-color: #efb1b1;
+        background: #fff0f0;
+        color: #a42525;
+      }
+
+      .primary-action:disabled,
+      .secondary-action:disabled,
+      .success-action:disabled,
+      .danger-action:disabled,
+      .delete-action:disabled {
+        cursor: wait;
+        opacity: .58;
       }
 
       .error-box {
-        background: #450a0a;
-        border: 1px solid #7f1d1d;
-        color: #fecaca;
+        background: #fff0f0;
+        border: 1px solid #efb1b1;
+        color: #a42525;
         padding: 12px;
         border-radius: 12px;
         margin-bottom: 16px;
       }
 
       .success-box {
-        background: #052e16;
-        border: 1px solid #166534;
-        color: #bbf7d0;
+        background: #e9f8ef;
+        border: 1px solid #93d8b0;
+        color: #086b38;
         padding: 12px;
         border-radius: 12px;
         margin-bottom: 16px;
@@ -1942,6 +2214,7 @@ function StyleBlock() {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 14px;
+        align-items: end;
       }
 
       .field {
@@ -1951,8 +2224,35 @@ function StyleBlock() {
 
       .field span,
       .helpers-box > span {
-        color: #cbd5e1;
+        color: #294052;
         font-weight: 800;
+      }
+
+      .on-call-checkbox {
+        min-height: 46px;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 10px 13px;
+        border: 1px solid #cbd8df;
+        border-radius: 12px;
+        background: #f8fafb;
+        color: #294052;
+        font-weight: 900;
+        cursor: pointer;
+      }
+
+      .on-call-checkbox:has(input:checked) {
+        border-color: #b9a1ef;
+        background: #f4efff;
+        color: #6841bd;
+      }
+
+      .on-call-checkbox input {
+        width: 20px;
+        height: 20px;
+        margin: 0;
+        accent-color: #8156e8;
       }
 
       .input,
@@ -1960,9 +2260,9 @@ function StyleBlock() {
         width: 100%;
         padding: 12px;
         border-radius: 12px;
-        border: 1px solid #334155;
-        background: #020617;
-        color: white;
+        border: 1px solid #cbd8df;
+        background: #fff;
+        color: #142433;
       }
 
       .textarea {
@@ -1982,8 +2282,8 @@ function StyleBlock() {
         margin-top: 8px;
         display: grid;
         gap: 8px;
-        background: #0f172a;
-        border: 1px solid #334155;
+        background: #fff;
+        border: 1px solid #d7e2e7;
         border-radius: 14px;
         padding: 8px;
         max-height: 280px;
@@ -1991,7 +2291,7 @@ function StyleBlock() {
       }
 
       .suggest-empty {
-        color: #94a3b8;
+        color: #718195;
         padding: 10px;
       }
 
@@ -1999,24 +2299,24 @@ function StyleBlock() {
         text-align: left;
         padding: 12px;
         border-radius: 12px;
-        border: 1px solid #334155;
-        background: #020617;
-        color: white;
+        border: 1px solid #dfe7ec;
+        background: #fff;
+        color: #142433;
         cursor: pointer;
       }
 
       .suggest-item span,
       .suggest-item small {
         display: block;
-        color: #94a3b8;
+        color: #718195;
         margin-top: 4px;
       }
 
       .selected-elevator {
         margin-top: 8px;
-        background: #052e16;
-        border: 1px solid #166534;
-        color: #bbf7d0;
+        background: #e9f8ef;
+        border: 1px solid #93d8b0;
+        color: #086b38;
         border-radius: 12px;
         padding: 10px;
         display: flex;
@@ -2030,7 +2330,7 @@ function StyleBlock() {
         border: 0;
         border-radius: 10px;
         padding: 8px 10px;
-        background: #166534;
+        background: #079447;
         color: white;
         cursor: pointer;
         font-weight: 800;
@@ -2044,8 +2344,8 @@ function StyleBlock() {
       .helpers-list {
         display: grid;
         gap: 8px;
-        background: #020617;
-        border: 1px solid #334155;
+        background: #f7fafb;
+        border: 1px solid #dfe7ec;
         border-radius: 14px;
         padding: 12px;
       }
@@ -2054,11 +2354,68 @@ function StyleBlock() {
         display: flex;
         align-items: center;
         gap: 10px;
-        color: #cbd5e1;
+        color: #294052;
       }
 
       .check-row.muted {
-        color: #64748b;
+        color: #8b99a6;
+      }
+
+      .fault-extra {
+        overflow: hidden;
+        border: 1px solid #dce6eb;
+        border-radius: 14px;
+        background: #f8fafb;
+      }
+
+      .fault-extra > summary,
+      .fault-progress > summary,
+      .fault-status-more > summary {
+        list-style: none;
+        cursor: pointer;
+      }
+
+      .fault-extra > summary::-webkit-details-marker,
+      .fault-progress > summary::-webkit-details-marker,
+      .fault-status-more > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .fault-extra > summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 13px 14px;
+        color: #294052;
+        font-weight: 900;
+      }
+
+      .fault-extra > summary::after {
+        content: "+";
+        color: #079447;
+        font-size: 22px;
+      }
+
+      .fault-extra[open] > summary::after {
+        content: "−";
+      }
+
+      .fault-extra > summary small {
+        margin-left: auto;
+        color: #718195;
+        font-weight: 700;
+      }
+
+      .fault-extra-content {
+        display: grid;
+        gap: 14px;
+        padding: 0 14px 14px;
+      }
+
+      .prefill-hint {
+        color: #08783d;
+        font-weight: 700;
       }
 
       .form-actions {
@@ -2087,18 +2444,16 @@ function StyleBlock() {
       }
 
       .fault-card.urgent {
-        border-color: #ef4444;
-        background: #450a0a;
+        box-shadow: inset 5px 0 0 #d93b3b, 0 12px 34px rgba(16, 37, 54, .07);
       }
 
       .fault-card.done {
-        border-color: #166534;
-        background: #071d12;
+        box-shadow: inset 5px 0 0 #079447, 0 12px 34px rgba(16, 37, 54, .07);
       }
 
       .fault-card.archived {
         opacity: 0.78;
-        background: #111827;
+        box-shadow: inset 5px 0 0 #8b99a6, 0 12px 34px rgba(16, 37, 54, .07);
       }
 
       .fault-main {
@@ -2135,28 +2490,48 @@ function StyleBlock() {
         font-weight: 900;
       }
 
-      .pill.red {
-        background: #7f1d1d;
-        color: #fecaca;
-        border: 1px solid #ef4444;
+      .pill.danger {
+        background: #fff0f0;
+        color: #a42525;
+        border: 1px solid #efb1b1;
       }
 
-      .pill.amber {
-        background: #451a03;
-        color: #fed7aa;
-        border: 1px solid #f97316;
+      .pill.danger.strong {
+        background: #d93b3b;
+        color: white;
+        border-color: #d93b3b;
       }
 
-      .pill.blue {
-        background: #172554;
-        color: #bfdbfe;
-        border: 1px solid #3b82f6;
+      .pill.warning,
+      .pill.waiting {
+        background: #fff5e8;
+        color: #8a540f;
+        border: 1px solid #efc57f;
       }
 
+      .pill.info {
+        background: #edf4ff;
+        color: #245ca8;
+        border: 1px solid #a9c9f6;
+      }
+
+      .pill.success,
       .pill.green {
-        background: #052e16;
-        color: #bbf7d0;
-        border: 1px solid #16a34a;
+        background: #e9f8ef;
+        color: #086b38;
+        border: 1px solid #93d8b0;
+      }
+
+      .pill.neutral {
+        background: #f1f5f7;
+        color: #52697b;
+        border: 1px solid #d5e0e5;
+      }
+
+      .pill.on-call {
+        background: #f4efff;
+        color: #6841bd;
+        border: 1px solid #c9b7f4;
       }
 
       .meta-text {
@@ -2168,8 +2543,8 @@ function StyleBlock() {
       .fault-side {
         display: grid;
         gap: 10px;
-        background: #020617;
-        border: 1px solid #334155;
+        background: #f8fafb;
+        border: 1px solid #dfe7ec;
         border-radius: 16px;
         padding: 14px;
       }
@@ -2180,18 +2555,18 @@ function StyleBlock() {
       }
 
       .fault-side strong {
-        color: #94a3b8;
+        color: #718195;
         font-size: 13px;
       }
 
       .fault-side span {
-        color: #e2e8f0;
+        color: #17374d;
       }
 
       .timeline {
-        margin-top: 14px;
-        background: #020617;
-        border: 1px solid #334155;
+        margin-top: 10px;
+        background: #fff;
+        border: 1px solid #dfe7ec;
         border-radius: 16px;
         padding: 14px;
         display: grid;
@@ -2200,13 +2575,13 @@ function StyleBlock() {
 
       .timeline-item span {
         display: block;
-        color: #94a3b8;
+        color: #718195;
         font-size: 13px;
         margin-bottom: 4px;
       }
 
       .timeline-item p {
-        color: #e2e8f0;
+        color: #17374d;
       }
 
       .fault-actions {
@@ -2216,6 +2591,108 @@ function StyleBlock() {
         flex-wrap: wrap;
       }
 
+      .workflow-next {
+        min-width: min(100%, 250px);
+      }
+
+      .workflow-next.primary-action {
+        background: #3478f6;
+      }
+
+      .fault-progress {
+        margin-top: 14px;
+        border-top: 1px solid #e2e9ed;
+      }
+
+      .fault-progress > summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: max-content;
+        padding-top: 13px;
+        color: #52697b;
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .fault-progress > summary::before {
+        content: "▸";
+        color: #079447;
+      }
+
+      .fault-progress[open] > summary::before {
+        content: "▾";
+      }
+
+      .fault-progress > summary span {
+        min-width: 22px;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: #eef3f6;
+        color: #52697b;
+        text-align: center;
+      }
+
+      .fault-status-more {
+        position: relative;
+      }
+
+      .fault-status-more > summary {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        padding: 0 15px;
+        border: 1px solid #cbd8df;
+        border-radius: 13px;
+        background: #fff;
+        color: #294052;
+        font-weight: 900;
+      }
+
+      .fault-status-more > div {
+        position: absolute;
+        z-index: 12;
+        top: calc(100% + 6px);
+        left: 0;
+        min-width: 230px;
+        overflow: hidden;
+        border: 1px solid #d7e2e7;
+        border-radius: 13px;
+        background: #fff;
+        box-shadow: 0 18px 45px rgba(16, 37, 54, .18);
+      }
+
+      .fault-status-more button {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 11px 13px;
+        border: 0;
+        border-bottom: 1px solid #edf1f3;
+        background: #fff;
+        color: #294052;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .fault-status-more button:hover {
+        background: #f5faf7;
+      }
+
+      .fault-status-more i {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #8b99a6;
+      }
+
+      .fault-status-more i.danger { background: #d93b3b; }
+      .fault-status-more i.info { background: #3478f6; }
+      .fault-status-more i.warning,
+      .fault-status-more i.waiting { background: #e38a21; }
+      .fault-status-more i.success { background: #079447; }
+
       .fault-note-compose {
         display: grid;
         grid-template-columns: minmax(220px, 1fr) auto;
@@ -2223,18 +2700,18 @@ function StyleBlock() {
         align-items: stretch;
         margin-top: 14px;
         padding: 12px;
-        border: 1px solid #334155;
+        border: 1px solid #dfe7ec;
         border-radius: 16px;
-        background: #020617;
+        background: #f8fafb;
       }
 
       .fault-note-compose textarea {
         min-height: 58px;
         padding: 10px 12px;
-        border: 1px solid #334155;
+        border: 1px solid #cbd8df;
         border-radius: 11px;
-        background: #0f172a;
-        color: #f8fafc;
+        background: #fff;
+        color: #142433;
         resize: vertical;
       }
 
@@ -2495,6 +2972,19 @@ function StyleBlock() {
         .fault-actions {
           display: grid;
           grid-template-columns: 1fr;
+        }
+
+        .fault-status-more,
+        .fault-status-more > summary,
+        .workflow-next {
+          width: 100%;
+        }
+
+        .fault-status-more > div {
+          position: static;
+          min-width: 0;
+          margin-top: 7px;
+          box-shadow: none;
         }
 
         .pill {
