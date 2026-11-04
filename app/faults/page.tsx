@@ -64,6 +64,8 @@ type Fault = {
   priority: FaultPriority;
   status: FaultStatus;
   description: string;
+  fault_date: string;
+  is_on_call: boolean;
   created_by: string | null;
   main_technician_id: string | null;
   created_at: string;
@@ -90,6 +92,8 @@ type FaultForm = {
   elevator_id: string;
   priority: FaultPriority;
   description: string;
+  fault_date: string;
+  is_on_call: boolean;
   main_technician_id: string;
   helper_ids: string[];
   note: string;
@@ -99,10 +103,25 @@ const emptyForm: FaultForm = {
   elevator_id: "",
   priority: "bezna",
   description: "",
+  fault_date: "",
+  is_on_call: false,
   main_technician_id: "",
   helper_ids: [],
   note: "",
 };
+
+function todayDateKey() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatCzechDate(value: string) {
+  const [year, month, day] = value.split("-");
+  return year && month && day ? `${day}.${month}.${year}` : value;
+}
 
 const roleLabels: Record<UserRole, string> = {
   admin: "Admin",
@@ -519,8 +538,9 @@ export default function FaultsPage() {
       supabase
         .from("faults")
         .select(
-          "id, elevator_id, custom_elevator_label, region_id, priority, status, description, created_by, main_technician_id, created_at, finished_at, archived_at"
+          "id, elevator_id, custom_elevator_label, region_id, priority, status, description, fault_date, is_on_call, created_by, main_technician_id, created_at, finished_at, archived_at"
         )
+        .order("fault_date", { ascending: false })
         .order("created_at", { ascending: false }),
 
       supabase.from("fault_assignees").select("id, fault_id, profile_id, role"),
@@ -599,6 +619,7 @@ export default function FaultsPage() {
     setForm({
       ...emptyForm,
       priority: priority ?? "bezna",
+      fault_date: todayDateKey(),
       main_technician_id: isDispatcher ? "" : currentProfile?.id ?? "",
     });
 
@@ -629,6 +650,8 @@ export default function FaultsPage() {
       elevator_id: fault.elevator_id ?? "",
       priority: fault.priority,
       description: fault.description,
+      fault_date: fault.fault_date,
+      is_on_call: fault.is_on_call,
       main_technician_id: fault.main_technician_id ?? "",
       helper_ids: helpers,
       note: "",
@@ -816,6 +839,12 @@ export default function FaultsPage() {
       return;
     }
 
+    if (!form.fault_date) {
+      setMessage("Vyber datum poruchy.");
+      setSuccessMessage("");
+      return;
+    }
+
     if (!currentProfile) {
       setMessage("Nejsi přihlášený.");
       setSuccessMessage("");
@@ -848,6 +877,8 @@ export default function FaultsPage() {
           region_id: selectedElevator?.region_id ?? null,
           priority: form.priority,
           description,
+          fault_date: form.fault_date,
+          is_on_call: form.is_on_call,
           main_technician_id: effectiveMainTechnicianId || null,
           updated_at: new Date().toISOString(),
         })
@@ -948,6 +979,8 @@ export default function FaultsPage() {
         priority: form.priority,
         status,
         description,
+        fault_date: form.fault_date,
+        is_on_call: form.is_on_call,
         created_by: currentProfile.id,
         main_technician_id: effectiveMainTechnicianId || null,
       });
@@ -1352,6 +1385,30 @@ export default function FaultsPage() {
                     ))}
                   </select>
                 </label>
+
+                <label className="field">
+                  <span>Datum poruchy</span>
+                  <input
+                    type="date"
+                    value={form.fault_date}
+                    onChange={(event) =>
+                      updateForm("fault_date", event.target.value)
+                    }
+                    className="input"
+                    required
+                  />
+                </label>
+
+                <label className="on-call-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={form.is_on_call}
+                    onChange={(event) =>
+                      updateForm("is_on_call", event.target.checked)
+                    }
+                  />
+                  <span>Pohotovost</span>
+                </label>
               </div>
 
               <label className="field">
@@ -1611,6 +1668,10 @@ export default function FaultsPage() {
                 {statusLabels[fault.status]}
               </span>
 
+              {fault.is_on_call && (
+                <span className="pill on-call">Pohotovost</span>
+              )}
+
               {(isFaultAssignedToMe(fault) || fault.created_by === currentProfile?.id) && (
                 <span className="pill green">Moje práce</span>
               )}
@@ -1621,7 +1682,8 @@ export default function FaultsPage() {
             <p>{fault.description}</p>
 
             <div className="meta-text">
-              Rajon: {getRegionName(fault.region_id)} · Vytvořeno:{" "}
+              Datum poruchy: {formatCzechDate(fault.fault_date)} · Rajon:{" "}
+              {getRegionName(fault.region_id)} · Založeno:{" "}
               {new Date(fault.created_at).toLocaleString("cs-CZ")}
             </div>
           </div>
@@ -2152,6 +2214,7 @@ function StyleBlock() {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 14px;
+        align-items: end;
       }
 
       .field {
@@ -2163,6 +2226,33 @@ function StyleBlock() {
       .helpers-box > span {
         color: #294052;
         font-weight: 800;
+      }
+
+      .on-call-checkbox {
+        min-height: 46px;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 10px 13px;
+        border: 1px solid #cbd8df;
+        border-radius: 12px;
+        background: #f8fafb;
+        color: #294052;
+        font-weight: 900;
+        cursor: pointer;
+      }
+
+      .on-call-checkbox:has(input:checked) {
+        border-color: #b9a1ef;
+        background: #f4efff;
+        color: #6841bd;
+      }
+
+      .on-call-checkbox input {
+        width: 20px;
+        height: 20px;
+        margin: 0;
+        accent-color: #8156e8;
       }
 
       .input,
@@ -2436,6 +2526,12 @@ function StyleBlock() {
         background: #f1f5f7;
         color: #52697b;
         border: 1px solid #d5e0e5;
+      }
+
+      .pill.on-call {
+        background: #f4efff;
+        color: #6841bd;
+        border: 1px solid #c9b7f4;
       }
 
       .meta-text {
