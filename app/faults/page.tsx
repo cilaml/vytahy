@@ -162,13 +162,6 @@ const activeStatuses: FaultStatus[] = [
   "ceka_na_zakaznika",
 ];
 
-const waitingStatuses: FaultStatus[] = [
-  "ceka_na_dil",
-  "ceka_na_spravce",
-  "ceka_na_pristup",
-  "ceka_na_zakaznika",
-];
-
 const priorityTone: Record<FaultPriority, string> = {
   bezna: "neutral",
   dulezita: "warning",
@@ -697,38 +690,6 @@ export default function FaultsPage() {
     setElevatorQuery(`${elevator.address} — ${elevator.label}`);
   }
 
-  function getNextFaultStep(fault: Fault): {
-    status: FaultStatus;
-    label: string;
-    tone: "primary" | "success";
-  } | null {
-    if (["nova", "prirazeno"].includes(fault.status)) {
-      return { status: "na_ceste", label: "Vyjet na poruchu", tone: "primary" };
-    }
-
-    if (fault.status === "na_ceste") {
-      return {
-        status: "rozpracovano",
-        label: "Jsem na místě – začít práci",
-        tone: "primary",
-      };
-    }
-
-    if (waitingStatuses.includes(fault.status)) {
-      return {
-        status: "rozpracovano",
-        label: "Pokračovat v práci",
-        tone: "primary",
-      };
-    }
-
-    if (fault.status === "rozpracovano") {
-      return { status: "hotovo", label: "Dokončit poruchu", tone: "success" };
-    }
-
-    return null;
-  }
-
   function toggleHelper(technicianId: string) {
     setForm((current) => {
       const helperIds = current.helper_ids.includes(technicianId)
@@ -1080,17 +1041,6 @@ export default function FaultsPage() {
 
     if (status === "archivovano" && !isDispatcher) {
       setMessage("Archivovat poruchy může jen dispečink.");
-      return;
-    }
-
-    const confirmText =
-      status === "hotovo"
-        ? "Opravdu označit poruchu jako hotovou?"
-        : status === "archivovano"
-          ? "Opravdu archivovat poruchu?"
-          : null;
-
-    if (confirmText && !window.confirm(confirmText)) {
       return;
     }
 
@@ -1641,19 +1591,7 @@ export default function FaultsPage() {
       : fault.status === "archivovano"
         ? "archived"
         : "active";
-    const nextStep = getNextFaultStep(fault);
     const statusSaving = savingStatusId === fault.id;
-    const otherStatuses = ([
-      "na_ceste",
-      "rozpracovano",
-      "ceka_na_dil",
-      "ceka_na_spravce",
-      "ceka_na_pristup",
-      "ceka_na_zakaznika",
-      "hotovo",
-    ] as FaultStatus[]).filter(
-      (status) => status !== fault.status && status !== nextStep?.status
-    );
 
     return (
       <article key={fault.id} className={`fault-card ${stateClass} ${urgent ? "urgent" : ""}`}>
@@ -1753,37 +1691,15 @@ export default function FaultsPage() {
         )}
 
         <div className="fault-actions">
-          {canWorkOnFault && nextStep && (
+          {canWorkOnFault && fault.status !== "hotovo" && (
             <button
-              onClick={() => void updateFaultStatus(fault, nextStep.status)}
-              className={
-                nextStep.tone === "success"
-                  ? "success-action workflow-next"
-                  : "primary-action workflow-next"
-              }
+              type="button"
+              onClick={() => void updateFaultStatus(fault, "hotovo")}
+              className="success-action complete-fault-action"
               disabled={statusSaving}
             >
-              {statusSaving ? "Ukládám…" : nextStep.label}
+              {statusSaving ? "Ukládám…" : "✓ Hotovo"}
             </button>
-          )}
-
-          {canWorkOnFault && fault.status !== "hotovo" && (
-            <details className="fault-status-more">
-              <summary>Jiný stav</summary>
-              <div>
-                {otherStatuses.map((status) => (
-                  <button
-                    type="button"
-                    key={status}
-                    disabled={statusSaving}
-                    onClick={() => void updateFaultStatus(fault, status)}
-                  >
-                    <i className={statusTone[status]} />
-                    {statusLabels[status]}
-                  </button>
-                ))}
-              </div>
-            </details>
           )}
 
           {canManageFaults &&
@@ -2369,15 +2285,13 @@ function StyleBlock() {
       }
 
       .fault-extra > summary,
-      .fault-progress > summary,
-      .fault-status-more > summary {
+      .fault-progress > summary {
         list-style: none;
         cursor: pointer;
       }
 
       .fault-extra > summary::-webkit-details-marker,
-      .fault-progress > summary::-webkit-details-marker,
-      .fault-status-more > summary::-webkit-details-marker {
+      .fault-progress > summary::-webkit-details-marker {
         display: none;
       }
 
@@ -2591,12 +2505,8 @@ function StyleBlock() {
         flex-wrap: wrap;
       }
 
-      .workflow-next {
+      .complete-fault-action {
         min-width: min(100%, 250px);
-      }
-
-      .workflow-next.primary-action {
-        background: #3478f6;
       }
 
       .fault-progress {
@@ -2632,66 +2542,6 @@ function StyleBlock() {
         color: #52697b;
         text-align: center;
       }
-
-      .fault-status-more {
-        position: relative;
-      }
-
-      .fault-status-more > summary {
-        min-height: 44px;
-        display: flex;
-        align-items: center;
-        padding: 0 15px;
-        border: 1px solid #cbd8df;
-        border-radius: 13px;
-        background: #fff;
-        color: #294052;
-        font-weight: 900;
-      }
-
-      .fault-status-more > div {
-        position: absolute;
-        z-index: 12;
-        top: calc(100% + 6px);
-        left: 0;
-        min-width: 230px;
-        overflow: hidden;
-        border: 1px solid #d7e2e7;
-        border-radius: 13px;
-        background: #fff;
-        box-shadow: 0 18px 45px rgba(16, 37, 54, .18);
-      }
-
-      .fault-status-more button {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        gap: 9px;
-        padding: 11px 13px;
-        border: 0;
-        border-bottom: 1px solid #edf1f3;
-        background: #fff;
-        color: #294052;
-        text-align: left;
-        cursor: pointer;
-      }
-
-      .fault-status-more button:hover {
-        background: #f5faf7;
-      }
-
-      .fault-status-more i {
-        width: 9px;
-        height: 9px;
-        border-radius: 50%;
-        background: #8b99a6;
-      }
-
-      .fault-status-more i.danger { background: #d93b3b; }
-      .fault-status-more i.info { background: #3478f6; }
-      .fault-status-more i.warning,
-      .fault-status-more i.waiting { background: #e38a21; }
-      .fault-status-more i.success { background: #079447; }
 
       .fault-note-compose {
         display: grid;
@@ -2974,17 +2824,8 @@ function StyleBlock() {
           grid-template-columns: 1fr;
         }
 
-        .fault-status-more,
-        .fault-status-more > summary,
-        .workflow-next {
+        .complete-fault-action {
           width: 100%;
-        }
-
-        .fault-status-more > div {
-          position: static;
-          min-width: 0;
-          margin-top: 7px;
-          box-shadow: none;
         }
 
         .pill {
