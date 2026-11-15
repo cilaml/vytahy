@@ -5,9 +5,10 @@ import {
   createClient,
   setRememberMePreference,
 } from "@/lib/supabase/client";
+import { loginIdentifierToEmail } from "@/lib/auth/login-identifier";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
 
@@ -37,6 +38,15 @@ export default function LoginPage() {
 
     setRememberMePreference(rememberMe);
     const supabase = createClient();
+    const email = loginIdentifierToEmail(identifier);
+
+    if (!email) {
+      setLoading(false);
+      setMessage(
+        "Zadej platný e-mail nebo login (alespoň 3 znaky, bez mezer)."
+      );
+      return;
+    }
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -46,7 +56,11 @@ export default function LoginPage() {
     setLoading(false);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(
+        error.message === "Invalid login credentials"
+          ? "Nesprávný e-mail, login nebo heslo."
+          : error.message
+      );
       return;
     }
 
@@ -61,13 +75,16 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin}>
           <label style={{ display: "block", fontSize: 14, color: "#cbd5e1", marginBottom: 6 }}>
-            E-mail
+            E-mail nebo přihlašovací jméno
           </label>
           <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="technik@firma.cz"
+            type="text"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
+            placeholder="technik@firma.cz nebo novak"
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="username"
             required
             style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #334155", background: "#020617", color: "white", marginBottom: 16 }}
           />
@@ -80,6 +97,7 @@ export default function LoginPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="••••••••"
+            autoComplete="current-password"
             required
             style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #334155", background: "#020617", color: "white", marginBottom: 16 }}
           />

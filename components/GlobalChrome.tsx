@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 type Profile = {
   id: string;
   email: string;
+  login_name: string | null;
   full_name: string;
   role: string;
   primary_region_id: string | null;
@@ -170,7 +171,7 @@ export default function GlobalChrome() {
 
     const profileResult = await supabase
       .from("profiles")
-      .select("id,email,full_name,role,primary_region_id")
+      .select("id,email,login_name,full_name,role,primary_region_id")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -432,7 +433,7 @@ export default function GlobalChrome() {
           </button>
           {profileOpen && (
             <section className="global-dropdown profile-dropdown">
-              <div className="profile-dropdown-head"><div className="profile-large-avatar">{initials(profile?.full_name || "U")}</div><div><strong>{profile?.full_name || "Uživatel"}</strong><span>{roleLabels[profile?.role ?? ""] ?? profile?.role ?? ""}</span><small>{profile?.email}</small></div></div>
+              <div className="profile-dropdown-head"><div className="profile-large-avatar">{initials(profile?.full_name || "U")}</div><div><strong>{profile?.full_name || "Uživatel"}</strong><span>{roleLabels[profile?.role ?? ""] ?? profile?.role ?? ""}</span><small>{profile?.login_name ? `Login: ${profile.login_name}` : profile?.email}</small></div></div>
               <button
                 type="button"
                 className="profile-install-button"

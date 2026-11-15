@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  isValidLoginName,
+  loginNameToEmail,
+  normalizeLoginName,
+} from "@/lib/auth/login-identifier";
 
 type ProfileRole =
   | "admin"
@@ -9,7 +14,8 @@ type ProfileRole =
   | "servis";
 
 type CreateUserPayload = {
-  email: string;
+  email: string | null;
+  login_name: string | null;
   password: string;
   full_name: string;
   phone: string | null;
@@ -134,7 +140,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const email = payload.email?.trim().toLowerCase();
+  const email = payload.email?.trim().toLowerCase() || null;
+  const loginName = normalizeLoginName(payload.login_name ?? "");
   const password = payload.password?.trim();
   const fullName = payload.full_name?.trim();
   const phone = payload.phone?.trim() || null;
@@ -154,8 +161,21 @@ export async function POST(request: NextRequest) {
     ? payload.secondary_region_ids.filter(Boolean)
     : [];
 
-  if (!email) {
-    return NextResponse.json({ error: "Vyplň e-mail." }, { status: 400 });
+  if ((!email && !loginName) || (email && loginName)) {
+    return NextResponse.json(
+      { error: "Vyplň buď e-mail, nebo přihlašovací jméno." },
+      { status: 400 }
+    );
+  }
+
+  if (loginName && !isValidLoginName(loginName)) {
+    return NextResponse.json(
+      {
+        error:
+          "Login musí mít 3 až 32 znaků a může obsahovat jen malá písmena bez háčků a čárek, čísla, tečku, pomlčku nebo podtržítko.",
+      },
+      { status: 400 }
+    );
   }
 
   if (!password || password.length < 6) {
@@ -173,9 +193,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Neplatná role." }, { status: 400 });
   }
 
+  if (loginName) {
+    const { data: existingLogin, error: loginLookupError } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("login_name", loginName)
+      .maybeSingle();
+
+    if (loginLookupError) {
+      return NextResponse.json(
+        { error: `Nepodařilo se ověřit login: ${loginLookupError.message}` },
+        { status: 400 }
+      );
+    }
+
+    if (existingLogin) {
+      return NextResponse.json(
+        { error: "Toto přihlašovací jméno už někdo používá." },
+        { status: 409 }
+      );
+    }
+  }
+
+  const authEmail = email ?? loginNameToEmail(loginName);
+
+  if (!authEmail) {
+    return NextResponse.json(
+      { error: "Nepodařilo se připravit přihlašovací údaje." },
+      { status: 400 }
+    );
+  }
+
   const { data: authUserData, error: createAuthError } =
     await adminClient.auth.admin.createUser({
-      email,
+      email: authEmail,
       password,
       email_confirm: true,
       user_metadata: {
@@ -200,7 +251,8 @@ export async function POST(request: NextRequest) {
     .from("profiles")
     .insert({
       id: createdUserId,
-      email,
+      email: authEmail,
+      login_name: loginName || null,
       full_name: fullName,
       phone,
       role,
@@ -249,5 +301,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     user_id: createdUserId,
+    login_name: loginName || null,
   });
 }

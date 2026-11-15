@@ -19,6 +19,7 @@ type ReactionType = "palec" | "videl" | "hotovo" | "text";
 type Profile = {
   id: string;
   email: string;
+  login_name: string | null;
   full_name: string;
   role: UserRole;
   primary_region_id: string | null;
@@ -334,7 +335,7 @@ export default function MessagesPage() {
     const { data: currentProfileData, error: currentProfileError } =
       await supabase
         .from("profiles")
-        .select("id, email, full_name, role, primary_region_id, active")
+        .select("id, email, login_name, full_name, role, primary_region_id, active")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -371,7 +372,7 @@ export default function MessagesPage() {
 
       supabase
         .from("profiles")
-        .select("id, email, full_name, role, primary_region_id, active")
+        .select("id, email, login_name, full_name, role, primary_region_id, active")
         .eq("active", true)
         .order("full_name", { ascending: true }),
 
@@ -903,7 +904,9 @@ export default function MessagesPage() {
                           <strong>{profile.full_name || profile.email}</strong>
                           <small>
                             {roleLabels[profile.role]} ·{" "}
-                            {profile.email || "bez e-mailu"}
+                            {profile.login_name
+                              ? `login: ${profile.login_name}`
+                              : profile.email || "bez e-mailu"}
                           </small>
                         </span>
                       </label>
