@@ -6,6 +6,10 @@ import type { CSSProperties, FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import ModulePermissionEditor from "@/components/ModulePermissionEditor";
 import { useAccessControl } from "@/components/AccessControl";
+import {
+  isValidLoginName,
+  normalizeLoginName,
+} from "@/lib/auth/login-identifier";
 
 type ProfileRole =
   | "admin"
@@ -17,6 +21,7 @@ type ProfileRole =
 type Profile = {
   id: string;
   email: string;
+  login_name: string | null;
   full_name: string;
   phone: string | null;
   role: ProfileRole;
@@ -39,7 +44,9 @@ type ProfileRegion = {
 };
 
 type NewUserForm = {
+  login_method: "username" | "email";
   email: string;
+  login_name: string;
   password: string;
   full_name: string;
   phone: string;
@@ -59,7 +66,9 @@ const roleLabels: Record<ProfileRole, string> = {
 };
 
 const emptyNewUserForm: NewUserForm = {
+  login_method: "username",
   email: "",
+  login_name: "",
   password: "",
   full_name: "",
   phone: "",
@@ -165,6 +174,7 @@ export default function TechniciansPage() {
       const searchable = [
         profile.full_name,
         profile.email,
+        profile.login_name,
         profile.phone,
         roleLabels[profile.role],
         getRegionName(profile.primary_region_id),
@@ -217,7 +227,7 @@ export default function TechniciansPage() {
       const { data: currentProfileData } = await supabase
         .from("profiles")
         .select(
-          "id, email, full_name, phone, role, primary_region_id, can_do_inspections, active, calendar_color"
+          "id, email, login_name, full_name, phone, role, primary_region_id, can_do_inspections, active, calendar_color"
         )
         .eq("id", user.id)
         .maybeSingle();
@@ -228,7 +238,7 @@ export default function TechniciansPage() {
     const { data: profilesData, error: profilesError } = await supabase
       .from("profiles")
       .select(
-        "id, email, full_name, phone, role, primary_region_id, can_do_inspections, active, calendar_color"
+        "id, email, login_name, full_name, phone, role, primary_region_id, can_do_inspections, active, calendar_color"
       )
       .order("full_name", { ascending: true });
 
@@ -328,13 +338,25 @@ export default function TechniciansPage() {
     }
 
     const email = newUserForm.email.trim().toLowerCase();
+    const loginName = normalizeLoginName(newUserForm.login_name);
     const password = newUserForm.password.trim();
     const fullName = newUserForm.full_name.trim();
     const phone = newUserForm.phone.trim();
     const roleToCreate: ProfileRole = isAdmin ? newUserForm.role : "technik";
 
-    if (!email) {
+    if (newUserForm.login_method === "email" && !email) {
       setMessage("Vyplň e-mail nového uživatele.");
+      setSuccessMessage("");
+      return;
+    }
+
+    if (
+      newUserForm.login_method === "username" &&
+      !isValidLoginName(loginName)
+    ) {
+      setMessage(
+        "Login musí mít 3 až 32 znaků. Použij malá písmena bez háčků a čárek, čísla, tečku, pomlčku nebo podtržítko."
+      );
       setSuccessMessage("");
       return;
     }
@@ -376,7 +398,9 @@ export default function TechniciansPage() {
         Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
-        email,
+        email: newUserForm.login_method === "email" ? email : null,
+        login_name:
+          newUserForm.login_method === "username" ? loginName : null,
         password,
         full_name: fullName,
         phone: phone || null,
@@ -416,7 +440,11 @@ export default function TechniciansPage() {
     setShowCreateForm(false);
     setNewUserForm(emptyNewUserForm);
     setNewUserSecondaryRegionIds([]);
-    setSuccessMessage(`Uživatel vytvořen: ${fullName}`);
+    setSuccessMessage(
+      newUserForm.login_method === "username"
+        ? `Uživatel vytvořen: ${fullName} · login: ${loginName}`
+        : `Uživatel vytvořen: ${fullName}`
+    );
     await loadData();
   }
 
@@ -564,7 +592,7 @@ export default function TechniciansPage() {
 
     const confirmed = window.confirm(
       `Opravdu smazat uživatele?\n\n${profile.full_name || profile.email}\n${
-        profile.email
+        profile.login_name ? `Login: ${profile.login_name}` : profile.email
       }\n\nPokud už má vazby na poruchy, servis nebo zprávy, může být lepší ho jen deaktivovat.`
     );
 
@@ -794,19 +822,60 @@ export default function TechniciansPage() {
             </div>
 
             <div style={styles.formGrid}>
-              <Field label="E-mail">
-                <input
-                  value={newUserForm.email}
+              <Field label="Způsob přihlášení">
+                <select
+                  value={newUserForm.login_method}
                   onChange={(event) =>
                     setNewUserForm({
                       ...newUserForm,
-                      email: event.target.value,
+                      login_method: event.target.value as "username" | "email",
+                      email: "",
+                      login_name: "",
                     })
                   }
-                  placeholder="technik@email.cz"
                   style={styles.input}
-                />
+                >
+                  <option value="username">Přihlašovací jméno</option>
+                  <option value="email">E-mail</option>
+                </select>
               </Field>
+
+              {newUserForm.login_method === "username" ? (
+                <Field label="Přihlašovací jméno">
+                  <input
+                    value={newUserForm.login_name}
+                    onChange={(event) =>
+                      setNewUserForm({
+                        ...newUserForm,
+                        login_name: event.target.value.toLowerCase(),
+                      })
+                    }
+                    placeholder="např. novak"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    minLength={3}
+                    maxLength={32}
+                    pattern="[a-z0-9][a-z0-9._-]{2,31}"
+                    title="3 až 32 znaků: malá písmena bez diakritiky, čísla, tečka, pomlčka nebo podtržítko"
+                    style={styles.input}
+                  />
+                </Field>
+              ) : (
+                <Field label="E-mail">
+                  <input
+                    value={newUserForm.email}
+                    onChange={(event) =>
+                      setNewUserForm({
+                        ...newUserForm,
+                        email: event.target.value,
+                      })
+                    }
+                    placeholder="technik@email.cz"
+                    type="email"
+                    style={styles.input}
+                  />
+                </Field>
+              )}
 
               <Field label="Dočasné heslo">
                 <input
@@ -1054,9 +1123,15 @@ export default function TechniciansPage() {
             </div>
 
             <div style={styles.formGrid}>
-              <Field label="E-mail">
+              <Field
+                label={
+                  editingProfile.login_name
+                    ? "Přihlašovací jméno"
+                    : "E-mail"
+                }
+              >
                 <input
-                  value={editingProfile.email}
+                  value={editingProfile.login_name ?? editingProfile.email}
                   disabled
                   style={styles.disabledInput}
                 />
@@ -1296,7 +1371,7 @@ export default function TechniciansPage() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Hledat jméno, e-mail, telefon, rajon..."
+              placeholder="Hledat jméno, login, e-mail, telefon, rajon..."
               style={styles.searchInput}
             />
 
@@ -1364,7 +1439,11 @@ export default function TechniciansPage() {
                         )}
                       </div>
 
-                      <p style={styles.profileEmail}>{profile.email}</p>
+                      <p style={styles.profileEmail}>
+                        {profile.login_name
+                          ? `Login: ${profile.login_name}`
+                          : profile.email}
+                      </p>
 
                       {profile.phone && (
                         <p style={styles.profileMeta}>Tel.: {profile.phone}</p>
