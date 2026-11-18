@@ -469,8 +469,10 @@ export default function FaultsPage() {
       fault.priority === "uvizle_osoby" && activeStatuses.includes(fault.status)
   ).length;
 
-  const myFaultsCount = visibleFaults.filter((fault) =>
-    isFaultAssignedToMe(fault) || fault.created_by === currentProfile?.id
+  const myActiveFaultsCount = visibleFaults.filter(
+    (fault) =>
+      activeStatuses.includes(fault.status) &&
+      (isFaultAssignedToMe(fault) || fault.created_by === currentProfile?.id)
   ).length;
 
   const doneFaultsCount = visibleFaults.filter(
@@ -480,6 +482,12 @@ export default function FaultsPage() {
   const archivedFaultsCount = visibleFaults.filter(
     (fault) => fault.status === "archivovano"
   ).length;
+
+  const hasListFilters =
+    search.trim().length > 0 ||
+    priorityFilter !== "all" ||
+    regionFilter.length > 0 ||
+    technicianFilter.length > 0;
 
   async function loadData() {
     setLoading(true);
@@ -1203,7 +1211,7 @@ export default function FaultsPage() {
         <header className="topbar">
           <div>
             <h1>Poruchy</h1>
-            <p>Aktivní práce, dokončené poruchy a samostatný archiv.</p>
+            <p>Přehled poruch, výjezdů a dokončených prací.</p>
           </div>
 
           {canManageFaults && <div className="topbar-actions">
@@ -1215,7 +1223,7 @@ export default function FaultsPage() {
               onClick={() => startCreate("uvizle_osoby")}
               className="danger-action"
             >
-              Uvízlé osoby
+              + Nahlásit uvízlé osoby
             </button>
           </div>}
         </header>
@@ -1223,17 +1231,59 @@ export default function FaultsPage() {
         {message && <div className="error-box">{message}</div>}
         {successMessage && <div className="success-box">{successMessage}</div>}
 
-        <section className="stats-grid">
-          <StatCard label="Aktivní poruchy" value={activeFaultsCount} />
-          <StatCard label="Hotové poruchy" value={doneFaultsCount} />
-          <StatCard label="Moje poruchy" value={myFaultsCount} />
-          <StatCard label="Uvízlé osoby" value={trappedFaultsCount} danger />
-        </section>
+        <section className="fault-overview">
+          <div className="fault-status-tabs" aria-label="Stav poruch">
+            <button
+              type="button"
+              className={statusFilter === "active" ? "active" : ""}
+              aria-pressed={statusFilter === "active"}
+              onClick={() => setStatusFilter("active")}
+            >
+              <span>Aktivní</span>
+              <strong>{activeFaultsCount}</strong>
+            </button>
+            <button
+              type="button"
+              className={statusFilter === "done" ? "active done" : "done"}
+              aria-pressed={statusFilter === "done"}
+              onClick={() => setStatusFilter("done")}
+            >
+              <span>Hotové</span>
+              <strong>{doneFaultsCount}</strong>
+            </button>
+            <button
+              type="button"
+              className={
+                statusFilter === "archive" ? "active archive" : "archive"
+              }
+              aria-pressed={statusFilter === "archive"}
+              onClick={() => setStatusFilter("archive")}
+            >
+              <span>Archiv</span>
+              <strong>{archivedFaultsCount}</strong>
+            </button>
+          </div>
 
-        <section className="fault-status-tabs" aria-label="Stav poruch">
-          <button className={statusFilter === "active" ? "active" : ""} onClick={() => setStatusFilter("active")}><span>Aktivní</span><strong>{activeFaultsCount}</strong><small>čekají na vyřešení</small></button>
-          <button className={statusFilter === "done" ? "active done" : "done"} onClick={() => setStatusFilter("done")}><span>Hotové</span><strong>{doneFaultsCount}</strong><small>dokončená práce</small></button>
-          <button className={statusFilter === "archive" ? "active archive" : "archive"} onClick={() => setStatusFilter("archive")}><span>Archiv</span><strong>{archivedFaultsCount}</strong><small>oddělené starší poruchy</small></button>
+          <div className="fault-highlights">
+            <div className="fault-highlight">
+              <span>Moje aktivní</span>
+              <strong>{myActiveFaultsCount}</strong>
+            </div>
+
+            {trappedFaultsCount > 0 && (
+              <button
+                type="button"
+                className="fault-highlight trapped-highlight"
+                onClick={() => {
+                  setStatusFilter("active");
+                  setPriorityFilter("uvizle_osoby");
+                }}
+              >
+                <span>Aktivní uvízlé osoby</span>
+                <strong>{trappedFaultsCount}</strong>
+              </button>
+            )}
+          </div>
         </section>
 
         {showForm && (
@@ -1507,8 +1557,8 @@ export default function FaultsPage() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Hledat výtah, adresu, PR, PL, technika..."
-              className="input"
+              placeholder="Hledat adresu, výtah, PR/PL nebo technika..."
+              className="input fault-search"
             />
 
             <select
@@ -1550,6 +1600,24 @@ export default function FaultsPage() {
                 </option>
               ))}
             </select>}
+          </div>
+
+          <div className="filter-summary">
+            <span>Výsledků: {orderedFaults.length}</span>
+            {hasListFilters && (
+              <button
+                type="button"
+                className="filter-reset"
+                onClick={() => {
+                  setSearch("");
+                  setPriorityFilter("all");
+                  setRegionFilter("");
+                  setTechnicianFilter("");
+                }}
+              >
+                Zrušit filtry
+              </button>
+            )}
           </div>
         </section>
 
@@ -1747,23 +1815,6 @@ function NavLink({
     <a className={active ? "nav-link active" : "nav-link"} href={href}>
       {label}
     </a>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  danger,
-}: {
-  label: string;
-  value: number;
-  danger?: boolean;
-}) {
-  return (
-    <div className={danger ? "stat-card danger" : "stat-card"}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 
@@ -2015,51 +2066,27 @@ function StyleBlock() {
         margin-bottom: 16px;
       }
 
-      .stats-grid {
+      .fault-overview {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 14px;
+        gap: 10px;
         margin-bottom: 18px;
-      }
-
-      .stat-card {
-        background: #0f172a;
-        border: 1px solid #1e293b;
-        border-radius: 20px;
-        padding: 18px;
-      }
-
-      .stat-card.danger {
-        border-color: #ef4444;
-        background: #450a0a;
-      }
-
-      .stat-card span {
-        display: block;
-        color: #94a3b8;
-        font-size: 14px;
-        margin-bottom: 8px;
-      }
-
-      .stat-card strong {
-        display: block;
-        font-size: 34px;
-        font-weight: 950;
       }
 
       .fault-status-tabs {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 12px;
-        margin-bottom: 18px;
       }
 
       .fault-status-tabs button {
-        display: grid;
-        gap: 3px;
-        padding: 15px;
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
         border: 1px solid #334155;
-        border-radius: 18px;
+        border-radius: 16px;
         background: #0f172a;
         color: #e2e8f0;
         text-align: left;
@@ -2090,11 +2117,46 @@ function StyleBlock() {
       }
 
       .fault-status-tabs strong {
-        font-size: 28px;
+        font-size: 26px;
       }
 
-      .fault-status-tabs small {
-        color: #94a3b8;
+      .fault-highlights {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .fault-highlight {
+        min-height: 38px;
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 8px 12px;
+        border: 1px solid #cbd8df;
+        border-radius: 999px;
+        background: #f7fafb;
+        color: #52697b;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .fault-highlight strong {
+        font-size: 17px;
+      }
+
+      button.fault-highlight {
+        cursor: pointer;
+      }
+
+      .trapped-highlight {
+        border-color: #efb1b1;
+        background: #fff0f0;
+        color: #a42525;
+      }
+
+      .trapped-highlight strong {
+        color: #a42525 !important;
       }
 
       .card {
@@ -2340,8 +2402,32 @@ function StyleBlock() {
 
       .filters {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        grid-template-columns: minmax(330px, 1.55fr) repeat(3, minmax(165px, 1fr));
         gap: 10px;
+      }
+
+      .fault-search {
+        min-width: 0;
+      }
+
+      .filter-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 12px;
+        color: #718195;
+        font-size: 13px;
+      }
+
+      .filter-reset {
+        border: 0;
+        background: transparent;
+        color: #245ca8;
+        font-weight: 850;
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 3px;
       }
 
       .fault-list {
@@ -2712,25 +2798,6 @@ function StyleBlock() {
           width: 100%;
         }
 
-        .stats-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-          margin-bottom: 14px;
-        }
-
-        .fault-status-tabs {
-          grid-template-columns: 1fr;
-        }
-
-        .stat-card {
-          padding: 14px;
-          border-radius: 17px;
-        }
-
-        .stat-card strong {
-          font-size: 28px;
-        }
-
         .card {
           padding: 16px;
           border-radius: 20px;
@@ -2749,6 +2816,25 @@ function StyleBlock() {
         .form-grid,
         .filters {
           grid-template-columns: 1fr;
+        }
+
+        .fault-status-tabs {
+          gap: 8px;
+        }
+
+        .fault-status-tabs button {
+          min-height: 68px;
+          display: grid;
+          gap: 2px;
+          padding: 11px 12px;
+        }
+
+        .fault-status-tabs strong {
+          font-size: 23px;
+        }
+
+        .filter-summary {
+          align-items: flex-start;
         }
 
         .fault-note-compose {
@@ -2845,10 +2931,6 @@ function StyleBlock() {
 
         .topbar h1 {
           font-size: 28px;
-        }
-
-        .stats-grid {
-          grid-template-columns: 1fr;
         }
 
         .card,
