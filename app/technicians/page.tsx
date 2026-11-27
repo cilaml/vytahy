@@ -120,6 +120,11 @@ export default function TechniciansPage() {
   const [deletingProfileId, setDeletingProfileId] = useState<string | null>(
     null
   );
+  const [passwordProfile, setPasswordProfile] = useState<Profile | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [passwordWasReset, setPasswordWasReset] = useState(false);
 
   const [message, setMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -293,6 +298,7 @@ export default function TechniciansPage() {
 
     setMessage("");
     setSuccessMessage("");
+    closePasswordReset();
     setEditingProfile(null);
     setEditingSecondaryRegionIds([]);
     setNewUserForm({
@@ -460,6 +466,7 @@ export default function TechniciansPage() {
     setShowCreateForm(false);
     setNewUserForm(emptyNewUserForm);
     setNewUserSecondaryRegionIds([]);
+    closePasswordReset();
     setEditingProfile(profile);
 
     const secondaryRegionIds = profileRegions
@@ -575,6 +582,124 @@ export default function TechniciansPage() {
     setEditingProfile(null);
     setEditingSecondaryRegionIds([]);
     await loadData();
+  }
+
+  function startPasswordReset(profile: Profile) {
+    if (!isAdmin) {
+      setMessage("Nové heslo může nastavovat pouze admin.");
+      setSuccessMessage("");
+      return;
+    }
+
+    setPasswordProfile(profile);
+    setNewPassword("");
+    setShowNewPassword(false);
+    setPasswordWasReset(false);
+    setShowCreateForm(false);
+    setEditingProfile(null);
+    setEditingSecondaryRegionIds([]);
+    setMessage("");
+    setSuccessMessage("");
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
+  function closePasswordReset() {
+    setPasswordProfile(null);
+    setNewPassword("");
+    setShowNewPassword(false);
+    setPasswordWasReset(false);
+    setResettingPassword(false);
+  }
+
+  async function resetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!isAdmin || !passwordProfile) {
+      setMessage("Nové heslo může nastavovat pouze admin.");
+      setSuccessMessage("");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setMessage("Nové heslo musí mít alespoň 6 znaků.");
+      setSuccessMessage("");
+      return;
+    }
+
+    setResettingPassword(true);
+    setPasswordWasReset(false);
+    setMessage("");
+    setSuccessMessage("Nastavuji nové heslo...");
+
+    const supabase = createClient();
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      setResettingPassword(false);
+      setSuccessMessage("");
+      setMessage("Nepodařilo se získat přihlašovací token.");
+      return;
+    }
+
+    const response = await fetch("/api/admin/reset-password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        profile_id: passwordProfile.id,
+        password: newPassword,
+      }),
+    });
+
+    const responseText = await response.text();
+    let result: { ok?: boolean; error?: string } = {};
+
+    try {
+      result = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      result = {
+        error:
+          responseText ||
+          `Server nevrátil JSON odpověď. HTTP status: ${response.status}`,
+      };
+    }
+
+    setResettingPassword(false);
+
+    if (!response.ok) {
+      setSuccessMessage("");
+      setMessage(result.error || "Nepodařilo se nastavit nové heslo.");
+      return;
+    }
+
+    setPasswordWasReset(true);
+    setShowNewPassword(true);
+    setMessage("");
+    setSuccessMessage(
+      `Nové heslo pro uživatele ${passwordProfile.full_name} bylo nastaveno. Můžeš ho ještě zkopírovat.`
+    );
+  }
+
+  async function copyNewPassword() {
+    if (!newPassword) return;
+
+    try {
+      await navigator.clipboard.writeText(newPassword);
+      setMessage("");
+      setSuccessMessage("Heslo bylo zkopírováno do schránky.");
+    } catch {
+      setSuccessMessage("");
+      setMessage("Heslo se nepodařilo zkopírovat. Označ ho a zkopíruj ručně.");
+    }
   }
 
   async function deleteProfile(profile: Profile) {
@@ -1097,6 +1222,96 @@ export default function TechniciansPage() {
           </form>
         )}
 
+        {passwordProfile && isAdmin && (
+          <form onSubmit={resetPassword} style={styles.card}>
+            <div style={styles.formTop}>
+              <div>
+                <h2 style={styles.cardTitle}>Nastavit nové heslo</h2>
+                <p style={styles.cardDescription}>
+                  Uživatel: <strong>{passwordProfile.full_name}</strong> ·{" "}
+                  {passwordProfile.login_name
+                    ? `login: ${passwordProfile.login_name}`
+                    : passwordProfile.email}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closePasswordReset}
+                disabled={resettingPassword}
+                style={styles.secondaryButton}
+              >
+                Zavřít
+              </button>
+            </div>
+
+            <div style={styles.passwordResetGrid}>
+              <Field label="Nové heslo">
+                <div style={styles.passwordInputRow}>
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(event) => {
+                      setNewPassword(event.target.value);
+                      setPasswordWasReset(false);
+                      setSuccessMessage("");
+                    }}
+                    minLength={6}
+                    autoComplete="new-password"
+                    placeholder="Alespoň 6 znaků"
+                    style={{ ...styles.input, flex: "1 1 240px" }}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((current) => !current)}
+                    style={styles.secondaryButton}
+                  >
+                    {showNewPassword ? "Skrýt" : "Zobrazit"}
+                  </button>
+                </div>
+              </Field>
+
+              <div style={styles.passwordNotice}>
+                Heslo se nikde v aplikaci neukládá. Po zavření tohoto formuláře
+                už ho nebude možné zobrazit, pouze znovu změnit.
+              </div>
+            </div>
+
+            <div style={styles.actions}>
+              <button
+                type="submit"
+                disabled={resettingPassword}
+                style={{
+                  ...styles.saveButton,
+                  opacity: resettingPassword ? 0.7 : 1,
+                }}
+              >
+                {resettingPassword ? "Nastavuji..." : "Nastavit nové heslo"}
+              </button>
+
+              {passwordWasReset && (
+                <button
+                  type="button"
+                  onClick={copyNewPassword}
+                  style={styles.copyPasswordButton}
+                >
+                  Zkopírovat heslo
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={closePasswordReset}
+                disabled={resettingPassword}
+                style={styles.secondaryButton}
+              >
+                Zrušit
+              </button>
+            </div>
+          </form>
+        )}
+
         {editingProfile && canManageUsers && (
           <form onSubmit={saveProfile} style={styles.card}>
             <div style={styles.formTop}>
@@ -1454,6 +1669,7 @@ export default function TechniciansPage() {
                       <div style={styles.profileActions}>
                         {canManageUsers && (
                           <button
+                            type="button"
                             onClick={() => startEditing(profile)}
                             style={styles.editButton}
                           >
@@ -1461,8 +1677,19 @@ export default function TechniciansPage() {
                           </button>
                         )}
 
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => startPasswordReset(profile)}
+                            style={styles.passwordButton}
+                          >
+                            Nastavit heslo
+                          </button>
+                        )}
+
                         {canDeleteUsers && currentProfile?.id !== profile.id && (
                           <button
+                            type="button"
                             onClick={() => deleteProfile(profile)}
                             disabled={deletingProfileId === profile.id}
                             style={{
@@ -1990,6 +2217,43 @@ const styles: Record<string, CSSProperties> = {
     flexWrap: "wrap",
   },
 
+  passwordResetGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gap: 14,
+    alignItems: "end",
+  },
+
+  passwordInputRow: {
+    display: "flex",
+    alignItems: "stretch",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+
+  passwordNotice: {
+    minHeight: 68,
+    display: "flex",
+    alignItems: "center",
+    background: "#fff8e8",
+    border: "1px solid #efd39a",
+    borderRadius: 13,
+    padding: "12px 14px",
+    color: "#765119",
+    fontSize: 14,
+    lineHeight: 1.5,
+  },
+
+  copyPasswordButton: {
+    background: "#2563eb",
+    color: "#ffffff",
+    border: "1px solid #1d4ed8",
+    borderRadius: 12,
+    padding: "12px 17px",
+    fontWeight: 950,
+    cursor: "pointer",
+  },
+
   filters: {
     display: "grid",
     gridTemplateColumns: "1fr 190px 220px 160px",
@@ -2081,6 +2345,16 @@ const styles: Record<string, CSSProperties> = {
     background: "#1e293b",
     border: "1px solid #334155",
     color: "#f8fafc",
+    borderRadius: 12,
+    padding: "10px 14px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  passwordButton: {
+    background: "#172554",
+    border: "1px solid #2563eb",
+    color: "#dbeafe",
     borderRadius: 12,
     padding: "10px 14px",
     fontWeight: 900,
